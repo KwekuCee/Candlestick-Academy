@@ -284,7 +284,7 @@ export default function App() {
         <section id="mentor" className="section mentor-section">
           <div className="container mentor-grid">
             <div className="mentor-image">
-              <img src="https://images.unsplash.com/photo-1614023342667-6f060e9d1e04?auto=format&fit=crop&w=1100&q=85" alt="Forex trading mentor in a dark shirt and glasses" />
+              <img src="public/ceo.png" alt="Forex trading mentor in a dark shirt and glasses" />
               <div className="image-accent" />
               <div className="experience-badge"><b>8+</b><span>YEARS IN<br />THE MARKET</span></div>
             </div>
@@ -298,7 +298,7 @@ export default function App() {
                 <li><Icon name="check" size={16} /> Ghana-based, globally minded</li>
                 <li><Icon name="check" size={16} /> Focused on responsible trading</li>
               </ul>
-              <span className="signature">Pastor Mike <small>FOUNDER, CANDLESTICKS ACADEMY</small></span>
+              <span className="signature">Michael Kweku Essilfie <small>FOUNDER, CANDLESTICKS ACADEMY</small></span>
             </div>
           </div>
         </section>
