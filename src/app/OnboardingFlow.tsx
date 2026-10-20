@@ -250,7 +250,7 @@ Thank you.`;
       registrationDate: new Date().toISOString(),
     };
 
-    saveStoredCurrentUser(updatedUser);
+    saveStoredCurrentUser(updatedUser, password);
 
     // Sync to Admin Student Roster
     const roster = getStoredRoster();

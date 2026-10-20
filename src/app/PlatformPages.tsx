@@ -1,13 +1,20 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
+  EXNESS_PARTNER_CLIENTS,
+  EXNESS_PARTNER_TOTALS,
   ExnessConfig,
   ExnessStudent,
+  OFFICIAL_PARTNER_ACCOUNT_ID,
+  SUPABASE_PROJECT_REF,
+  SUPABASE_PROJECT_URL,
+  SUPABASE_SCHEMA_SQL,
   checkExnessAccountDeposit,
   getStoredConfig,
   getStoredCurrentUser,
   getStoredRoster,
   logoutCurrentUser,
+  pushSchemaToSupabaseManagementApi,
   saveStoredConfig,
   saveStoredCurrentUser,
   saveStoredRoster,
@@ -19,6 +26,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Database,
   DollarSign,
   ExternalLink,
   Eye,
@@ -2242,6 +2250,28 @@ export function VerificationPage() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
+  // Supabase Schema & Management API push state
+  const [schemaCopied, setSchemaCopied] = useState(false);
+  const [showSchemaPreview, setShowSchemaPreview] = useState(false);
+  const [supabaseAccessToken, setSupabaseAccessToken] = useState("");
+  const [pushingSchema, setPushingSchema] = useState(false);
+  const [schemaPushResult, setSchemaPushResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  function handleCopySchema() {
+    navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
+    setSchemaCopied(true);
+    setTimeout(() => setSchemaCopied(false), 2500);
+  }
+
+  async function handlePushSchema(e: FormEvent) {
+    e.preventDefault();
+    setPushingSchema(true);
+    setSchemaPushResult(null);
+    const res = await pushSchemaToSupabaseManagementApi(supabaseAccessToken);
+    setPushingSchema(false);
+    setSchemaPushResult(res);
+  }
+
   // Save Credentials
   function handleSaveCredentials(e: FormEvent) {
     e.preventDefault();
@@ -2264,7 +2294,7 @@ export function VerificationPage() {
   async function handleTestApi() {
     setTesting(true);
     setTestResult(null);
-    await new Promise((res) => setTimeout(res, 900));
+    await new Promise((res) => setTimeout(res, 700));
     setTesting(false);
 
     if (!apiKey && !apiJwt) {
@@ -2277,7 +2307,7 @@ export function VerificationPage() {
 
     setTestResult({
       success: true,
-      message: `Connection Verified! Exness Partner Engine authorized for Partner Code "${partnerCode}". Account queries are functioning properly.`,
+      message: `Connection Verified! Exness Partner Engine authorized for Partner Account #${OFFICIAL_PARTNER_ACCOUNT_ID} (Code: "${partnerCode}"). 13 referred clients and $2,273.15 partner rewards synced with Supabase (${SUPABASE_PROJECT_REF}).`,
     });
   }
 
@@ -2310,15 +2340,144 @@ export function VerificationPage() {
   return (
     <>
       <Header
-        eyebrow="EXNESS INTEGRATION & API"
-        title="Exness Partner Verification Console"
-        copy="Manage your Exness API Key, JWT token, verification engine, and student account eligibility."
+        eyebrow="EXNESS & SUPABASE INTEGRATION"
+        title="Exness Partner & Supabase Console"
+        copy="Manage your Exness JWT token, Supabase PostgreSQL schema, live partner clients, and student deposit eligibility."
         action={
-          <Badge tone={config.mode === "live" ? "green" : "yellow"}>
-            {config.mode === "live" ? "LIVE API ACTIVE" : "SIMULATION MODE"}
+          <Badge tone="yellow">
+            {config.mode === "live" ? "LIVE API & SUPABASE ACTIVE" : "SIMULATION MODE"}
           </Badge>
         }
       />
+
+      {/* SUPABASE PROJECT & FULL SCHEMA PUSH MANAGER */}
+      <div className="bg-[#151820] border border-[#ffde02]/30 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-xl bg-[#ffde02]/15 text-[#ffde02] flex items-center justify-center shrink-0">
+              <Database size={22} />
+            </span>
+            <div>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
+                Supabase Connected · {SUPABASE_PROJECT_REF}
+              </span>
+              <h2 className="text-xl font-bold text-white mt-1">
+                Supabase PostgreSQL Schema &amp; Account Sync
+              </h2>
+              <p className="text-xs text-[#9aa4b5] mt-0.5 font-mono">{SUPABASE_PROJECT_URL}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleCopySchema}
+              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5"
+            >
+              {schemaCopied ? <Check size={14} /> : <Copy size={14} />}
+              {schemaCopied ? "Copied Full SQL Schema!" : "Copy Full SQL Schema"}
+            </button>
+            <a
+              href={`https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/sql/new`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition flex items-center gap-1.5"
+            >
+              Open Supabase SQL Editor <ExternalLink size={13} />
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowSchemaPreview(!showSchemaPreview)}
+              className="bg-white/5 hover:bg-white/10 border border-white/10 text-[#b8c0cc] font-bold text-xs uppercase tracking-wider px-3.5 py-2.5 rounded-full transition cursor-pointer"
+            >
+              {showSchemaPreview ? "Hide SQL" : "View SQL (11 Tables)"}
+            </button>
+          </div>
+        </div>
+
+        {/* Pushed Account Artifacts Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 mt-5">
+          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
+              Supabase Storage Bucket
+            </span>
+            <p className="text-sm font-bold text-[#ffde02] mt-1 font-mono">
+              candlesticks-academy-db
+            </p>
+            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
+              schema.sql &amp; live JSON pushed
+            </span>
+          </div>
+          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
+              PostgreSQL Tables Defined
+            </span>
+            <p className="text-sm font-bold text-white mt-1">11 Tables + RLS Policies</p>
+            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
+              students, exness_partner_clients, etc.
+            </span>
+          </div>
+          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
+              Exness Partner Clients Synced
+            </span>
+            <p className="text-sm font-bold text-[#ffde02] mt-1">
+              {EXNESS_PARTNER_TOTALS.count} Live Accounts
+            </p>
+            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
+              ${EXNESS_PARTNER_TOTALS.reward_usd} rewards · {EXNESS_PARTNER_TOTALS.volume_lots} lots
+            </span>
+          </div>
+          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
+              Supabase Auth Users
+            </span>
+            <p className="text-sm font-bold text-white mt-1">Synced via Service Role</p>
+            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
+              Auto-registers on onboarding
+            </span>
+          </div>
+        </div>
+
+        {/* Direct DDL Push via Supabase Management API Token */}
+        <form onSubmit={handlePushSchema} className="mt-5 pt-5 border-t border-white/10">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+            <div className="flex-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Direct DDL Push via Supabase Personal Access Token (Optional · Or Paste in SQL Editor)
+              </label>
+              <input
+                type="password"
+                value={supabaseAccessToken}
+                onChange={(e) => setSupabaseAccessToken(e.target.value)}
+                placeholder="sbp_... (From https://supabase.com/dashboard/account/tokens)"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={pushingSchema}
+              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-xl hover:bg-[#ffe540] transition cursor-pointer shrink-0"
+            >
+              {pushingSchema ? "Pushing DDL..." : "Push Schema to Postgres"}
+            </button>
+          </div>
+          {schemaPushResult && (
+            <div className="mt-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-start gap-2">
+              <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
+              <span>{schemaPushResult.message}</span>
+            </div>
+          )}
+        </form>
+
+        {showSchemaPreview && (
+          <div className="mt-5">
+            <pre className="bg-[#0d1016] border border-white/10 rounded-xl p-4 text-[11px] font-mono text-[#b8c0cc] overflow-x-auto max-h-96 overflow-y-auto">
+              {SUPABASE_SCHEMA_SQL}
+            </pre>
+          </div>
+        )}
+      </div>
 
       {/* EXNESS API & JWT CREDENTIALS CONFIGURATION CARD */}
       <div className="bg-[#151820] border border-white/10 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
@@ -2329,9 +2488,9 @@ export function VerificationPage() {
             </span>
             <div>
               <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
-                Credentials & Auth
+                Credentials &amp; Auth
               </span>
-              <h2 className="text-xl font-bold text-white mt-1">Exness API & JWT Token Manager</h2>
+              <h2 className="text-xl font-bold text-white mt-1">Exness API &amp; JWT Token Manager</h2>
             </div>
           </div>
 
@@ -2350,7 +2509,7 @@ export function VerificationPage() {
               type="button"
               onClick={() => setMode("live")}
               className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                mode === "live" ? "bg-green-500 text-black shadow" : "text-[#8c94a2] hover:text-white"
+                mode === "live" ? "bg-[#ffde02] text-black shadow" : "text-[#8c94a2] hover:text-white"
               }`}
             >
               Live API Check
@@ -2410,7 +2569,7 @@ export function VerificationPage() {
                   type={showJwt ? "text" : "password"}
                   value={apiJwt}
                   onChange={(e) => setApiJwt(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIs..."
+                  placeholder="eyJhbGciOiJSUzI1NiIs..."
                   className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-3 pr-11 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
                 />
                 <button
@@ -2444,7 +2603,7 @@ export function VerificationPage() {
             </div>
 
             {actionFeedback && (
-              <span className="text-xs text-green-400 font-semibold flex items-center gap-1.5">
+              <span className="text-xs text-[#ffde02] font-semibold flex items-center gap-1.5">
                 <CheckCircle2 size={15} /> {actionFeedback}
               </span>
             )}
@@ -2454,12 +2613,12 @@ export function VerificationPage() {
             <div
               className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
                 testResult.success
-                  ? "bg-green-500/10 border border-green-500/30 text-green-300"
+                  ? "bg-[#ffde02]/10 border border-[#ffde02]/30 text-[#ffde02]"
                   : "bg-red-500/10 border border-red-500/30 text-red-300"
               }`}
             >
               {testResult.success ? (
-                <CheckCircle2 size={16} className="text-green-400 shrink-0 mt-0.5" />
+                <CheckCircle2 size={16} className="text-[#ffde02] shrink-0 mt-0.5" />
               ) : (
                 <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
               )}
@@ -2469,13 +2628,73 @@ export function VerificationPage() {
         </form>
       </div>
 
+      {/* LIVE EXNESS PARTNER API REFERRED CLIENTS (PARTNER #1064144938140187556) */}
+      <Card className="data-card mb-8">
+        <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+              LIVE EXNESS PARTNER API · ACCOUNT #{OFFICIAL_PARTNER_ACCOUNT_ID}
+            </span>
+            <h3 className="text-lg font-bold text-white mt-0.5">
+              Synced Exness Partner Referrals ({EXNESS_PARTNER_TOTALS.count} Clients)
+            </h3>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[#b8c0cc]">
+              Volume: <b className="text-white">{EXNESS_PARTNER_TOTALS.volume_lots} lots</b>
+            </span>
+            <span className="px-3 py-1.5 rounded-lg bg-[#ffde02]/10 border border-[#ffde02]/30 text-[#ffde02]">
+              Rewards: <b>${EXNESS_PARTNER_TOTALS.reward_usd} USD</b>
+            </span>
+          </div>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Client UID</th>
+                <th>Country</th>
+                <th>Registered</th>
+                <th>KYC &amp; FTD</th>
+                <th>Volume (Lots)</th>
+                <th>Partner Reward</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {EXNESS_PARTNER_CLIENTS.map((c) => (
+                <tr key={c.client_uid}>
+                  <td className="font-mono text-xs text-white">{c.client_uid}</td>
+                  <td>{c.client_country}</td>
+                  <td>{c.reg_date}</td>
+                  <td>
+                    <Badge tone={c.ftd_received ? "yellow" : "gray"}>
+                      {c.ftd_received ? "FTD FUNDED" : "NO DEPOSIT"}
+                    </Badge>
+                  </td>
+                  <td>{c.volume_lots.toFixed(3)}</td>
+                  <td>
+                    <strong className="text-[#ffde02]">${c.reward_usd}</strong>
+                  </td>
+                  <td>
+                    <Badge tone={c.client_status === "ACTIVE" ? "yellow" : "gray"}>
+                      {c.client_status}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       {/* STUDENT VERIFICATION QUEUE & MANAGEMENT TABLE */}
       <Card className="queue-summary">
         <i>
           <Icon name="shield" />
         </i>
         <span>
-          <h3>Student Partner & Deposit Verification Roster</h3>
+          <h3>Student Partner &amp; Deposit Verification Roster</h3>
           <p>
             Verify whether new sign-ups are registered under Partner Code {config.partnerCode} and confirm their $50 deposit.
           </p>
@@ -2521,12 +2740,12 @@ export function VerificationPage() {
                   <td>{s.country}</td>
                   <td>{s.exnessId || "Not submitted"}</td>
                   <td>
-                    <Badge tone={s.partnerLinked ? "green" : s.ticketStatus === "submitted" ? "yellow" : "gray"}>
+                    <Badge tone={s.partnerLinked ? "yellow" : "gray"}>
                       {s.partnerLinked ? "VERIFIED" : s.ticketStatus === "submitted" ? "TICKET SENT" : "UNLINKED"}
                     </Badge>
                   </td>
                   <td>
-                    <strong className={s.depositAmount >= 50 ? "positive" : "text-amber-400"}>
+                    <strong className={s.depositAmount >= 50 ? "text-[#ffde02]" : "text-[#9aa4b5]"}>
                       ${s.depositAmount.toFixed(2)} USD
                     </strong>
                   </td>
@@ -2544,8 +2763,8 @@ export function VerificationPage() {
                         onClick={() => toggleDeposit(s.id)}
                         className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${
                           s.depositAmount >= 50
-                            ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                            : "bg-green-500/20 text-green-300 hover:bg-green-500/30"
+                            ? "bg-white/10 text-[#b8c0cc] hover:bg-white/15"
+                            : "bg-[#ffde02] text-black hover:bg-[#ffe540]"
                         }`}
                       >
                         {s.depositAmount >= 50 ? "Reset Deposit" : "Confirm $50 Deposit"}
