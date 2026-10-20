@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import HomePage from "../App";
+import { TermsPage, PrivacyPage } from "./LegalPages";
 import {
   AdminDashboardPage,
   CourseDetailPage,
@@ -25,12 +26,15 @@ import {
   TradesPage,
   VerificationPage,
 } from "./PlatformPages";
+import { OnboardingFlow } from "./OnboardingFlow";
 
 export const router = createBrowserRouter([
   { path: "/", Component: HomePage },
-  { path: "/register", Component: RegisterPage },
+  { path: "/terms", Component: TermsPage },
+  { path: "/privacy", Component: PrivacyPage },
+  { path: "/register", Component: OnboardingFlow },
   { path: "/login", Component: LoginPage },
-  { path: "/onboarding", Component: OnboardingPage },
+  { path: "/onboarding", Component: OnboardingFlow },
   {
     Component: PortalLayout,
     children: [
