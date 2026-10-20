@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
   EXNESS_PARTNER_CLIENTS,
+  EXNESS_PARTNER_CLIENTS_UPGRADE_SQL,
   EXNESS_PARTNER_TOTALS,
   ExnessConfig,
   ExnessStudent,
@@ -15,9 +16,13 @@ import {
   getStoredRoster,
   logoutCurrentUser,
   pushSchemaToSupabaseManagementApi,
+  refreshRosterFromSupabase,
+  registerApprovedTradingAccountInSupabase,
   saveStoredConfig,
   saveStoredCurrentUser,
   saveStoredRoster,
+  syncExnessLiveWithSupabase,
+  syncStudentToSupabase,
   verifyExnessPartnerAccount,
 } from "./exnessStore";
 import {
@@ -709,18 +714,22 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* Case 2: Partner linked, checking deposit */}
+      {/* Case 2: Partner linked via Trading Account ID -> Led to make $50 deposit to activate all platform features */}
       {student.partnerLinked && !isDepositCompleted && (
         <Card className="deposit-card">
           <i>
             <Icon name="shield" />
           </i>
           <div>
-            <small>EXNESS DEPOSIT STATUS · MINIMUM $50</small>
+            <small>
+              STEP 2: ACTIVATE FULL ACCESS · TRADING ACCOUNT #{student.exnessId || "LINKED"}
+            </small>
             <h3>
-              You&apos;re ${(50 - student.depositAmount).toFixed(2)} away from full academy access
+              Deposit ${(50 - student.depositAmount).toFixed(2)} USD in your Exness account to activate all features
             </h3>
-            <p>Academy courses, live trading rooms, and market signals unlock automatically when your $50 deposit is confirmed.</p>
+            <p>
+              Your Trading Account ID (<b>#{student.exnessId || "Verified"}</b>) is registered under our Partner Link. Make your minimum <b>$50.00 USD deposit</b> on Exness to automatically activate all Academy courses, live trading rooms, and daily VIP signals.
+            </p>
           </div>
           <div>
             <b>
@@ -729,15 +738,23 @@ export function DashboardPage() {
             <Progress value={(student.depositAmount / 50) * 100} />
           </div>
           <div className="flex flex-col gap-2">
+            <a
+              href="https://my.exness.com/pa/deposit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 rounded-full bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider text-center hover:bg-[#ffe540] transition"
+            >
+              Deposit $50 on Exness ↗
+            </a>
             <Button variant="secondary" onClick={() => handleCheckDeposit()} disabled={checking}>
-              {checking ? "Checking..." : "Check status"}
+              {checking ? "Checking..." : "Verify $50 Deposit"}
             </Button>
             <button
               type="button"
               onClick={() => handleCheckDeposit(50)}
-              className="text-[10px] text-[#ffde02] hover:underline"
+              className="text-[10px] text-[#ffde02] hover:underline cursor-pointer"
             >
-              ⚡ Simulate $50 deposit
+              ⚡ Simulate $50 deposit (Activate All)
             </button>
           </div>
         </Card>
@@ -2108,6 +2125,7 @@ export function StudentRosterPage() {
   const [selected, setSelected] = useState<ExnessStudent | null>(null);
 
   useEffect(() => {
+    void refreshRosterFromSupabase().then(setRoster);
     const sync = () => setRoster(getStoredRoster());
     window.addEventListener("candlesticks_roster_updated", sync);
     return () => window.removeEventListener("candlesticks_roster_updated", sync);
@@ -2118,10 +2136,10 @@ export function StudentRosterPage() {
       <Header
         eyebrow="STUDENT MANAGEMENT"
         title="Student roster"
-        copy="View real-time account status, Exness link state, and verified deposits."
+        copy="View real-time account status, Exness link state, and verified deposits from the Candlesticks Supabase database."
         action={
-          <Button onClick={() => setRoster(getStoredRoster())}>
-            <RefreshCw size={14} className="inline mr-1" /> Refresh
+          <Button onClick={() => void refreshRosterFromSupabase().then(setRoster)}>
+            <RefreshCw size={14} className="inline mr-1" /> Refresh from Supabase
           </Button>
         }
       />
@@ -2160,20 +2178,20 @@ export function StudentRosterPage() {
                   <td>{s.country}</td>
                   <td>{s.exnessId || "Pending"}</td>
                   <td>
-                    <Badge tone={s.partnerLinked ? "green" : s.ticketStatus === "submitted" ? "yellow" : "gray"}>
+                    <Badge tone={s.partnerLinked ? "yellow" : "gray"}>
                       {s.partnerLinked ? "VERIFIED" : s.ticketStatus === "submitted" ? "TICKET SENT" : "UNLINKED"}
                     </Badge>
                   </td>
                   <td>
-                    <strong className={s.depositAmount >= 50 ? "positive" : "text-amber-400"}>
+                    <strong className={s.depositAmount >= 50 ? "text-[#ffde02]" : "text-[#9aa4b5]"}>
                       ${s.depositAmount.toFixed(2)}
                     </strong>
                   </td>
                   <td>
                     {s.depositVerified && s.depositAmount >= 50 ? (
-                      <Badge tone="green">UNLOCKED</Badge>
+                      <Badge tone="yellow">UNLOCKED</Badge>
                     ) : (
-                      <Badge tone="red">LOCKED ($50)</Badge>
+                      <Badge tone="gray">LOCKED ($50)</Badge>
                     )}
                   </td>
                 </tr>
@@ -2200,10 +2218,10 @@ export function StudentRosterPage() {
             <h2>{selected.fullName}</h2>
             <p>{selected.email}</p>
             <div className="flex justify-center gap-2 my-2">
-              <Badge tone={selected.partnerLinked ? "green" : "yellow"}>
+              <Badge tone={selected.partnerLinked ? "yellow" : "gray"}>
                 {selected.partnerLinked ? "Partner Linked" : "Unlinked"}
               </Badge>
-              <Badge tone={selected.depositAmount >= 50 ? "green" : "red"}>
+              <Badge tone={selected.depositAmount >= 50 ? "yellow" : "gray"}>
                 ${selected.depositAmount.toFixed(2)} USD
               </Badge>
             </div>
@@ -2222,7 +2240,7 @@ export function StudentRosterPage() {
                 <small>{new Date(selected.registrationDate).toLocaleDateString()}</small>
               </span>
               <span>
-                Partner Link: {selected.partnerLinked ? "Confirmed via Exness API" : "Pending connection"}
+                Partner Link: {selected.partnerLinked ? "Confirmed in Candlesticks DB" : "Pending connection"}
                 <small>{selected.partnerLinkedAt ? new Date(selected.partnerLinkedAt).toLocaleTimeString() : "Awaiting link"}</small>
               </span>
               <span>
@@ -2252,15 +2270,82 @@ export function VerificationPage() {
 
   // Supabase Schema & Management API push state
   const [schemaCopied, setSchemaCopied] = useState(false);
+  const [upgradeSqlCopied, setUpgradeSqlCopied] = useState(false);
   const [showSchemaPreview, setShowSchemaPreview] = useState(false);
   const [supabaseAccessToken, setSupabaseAccessToken] = useState("");
   const [pushingSchema, setPushingSchema] = useState(false);
   const [schemaPushResult, setSchemaPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // New Approved Trading Account Registration Form State
+  const [newFullName, setNewFullName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newCountry, setNewCountry] = useState("Ghana");
+  const [newExnessId, setNewExnessId] = useState("");
+  const [newClientId, setNewClientId] = useState("");
+  const [newDepositAmount, setNewDepositAmount] = useState("0");
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [addAccountFeedback, setAddAccountFeedback] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    void refreshRosterFromSupabase().then(setRoster);
+    const sync = () => setRoster(getStoredRoster());
+    window.addEventListener("candlesticks_roster_updated", sync);
+    return () => window.removeEventListener("candlesticks_roster_updated", sync);
+  }, []);
+
+  async function handleRegisterApprovedAccount(e: FormEvent) {
+    e.preventDefault();
+    setAddingAccount(true);
+    setAddAccountFeedback(null);
+    const res = await registerApprovedTradingAccountInSupabase({
+      fullName: newFullName,
+      email: newEmail,
+      country: newCountry,
+      exnessId: newExnessId,
+      clientId: newClientId,
+      depositAmount: Number(newDepositAmount || 0),
+    });
+    setAddingAccount(false);
+    setAddAccountFeedback({ success: res.success, message: res.message });
+    if (res.success) {
+      setNewFullName("");
+      setNewEmail("");
+      setNewExnessId("");
+      setNewClientId("");
+      setNewDepositAmount("0");
+      const updated = await refreshRosterFromSupabase();
+      setRoster(updated);
+    }
+  }
+
   function handleCopySchema() {
     navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
     setSchemaCopied(true);
     setTimeout(() => setSchemaCopied(false), 2500);
+  }
+
+  function handleCopyUpgradeSql() {
+    navigator.clipboard.writeText(EXNESS_PARTNER_CLIENTS_UPGRADE_SQL);
+    setUpgradeSqlCopied(true);
+    setTimeout(() => setUpgradeSqlCopied(false), 2500);
+  }
+
+  // Live Auto-Sync from Exness Partner Link into Supabase SQL
+  const [refreshingLiveExness, setRefreshingLiveExness] = useState(false);
+  const [liveExnessFeedback, setLiveExnessFeedback] = useState<string | null>(null);
+
+  async function handleRefreshLiveFromExness() {
+    setRefreshingLiveExness(true);
+    setLiveExnessFeedback(null);
+    const res = await syncExnessLiveWithSupabase();
+    setRefreshingLiveExness(false);
+    setLiveExnessFeedback(res.message);
+    const updated = await refreshRosterFromSupabase();
+    setRoster(updated);
+    setTimeout(() => setLiveExnessFeedback(null), 5000);
   }
 
   async function handlePushSchema(e: FormEvent) {
@@ -2311,7 +2396,7 @@ export function VerificationPage() {
     });
   }
 
-  // Action: Toggle partner verification for student
+  // Action: Toggle partner verification for student (and sync to Supabase)
   function togglePartner(studentId: string) {
     const list = [...roster];
     const idx = list.findIndex((s) => s.id === studentId);
@@ -2320,10 +2405,11 @@ export function VerificationPage() {
       list[idx].partnerLinkedAt = list[idx].partnerLinked ? new Date().toISOString() : undefined;
       setRoster(list);
       saveStoredRoster(list);
+      void syncStudentToSupabase(list[idx]);
     }
   }
 
-  // Action: Toggle or set $50 deposit
+  // Action: Toggle or set $50 deposit (and sync to Supabase)
   function toggleDeposit(studentId: string) {
     const list = [...roster];
     const idx = list.findIndex((s) => s.id === studentId);
@@ -2334,6 +2420,7 @@ export function VerificationPage() {
       list[idx].depositVerifiedAt = isNowFunded ? new Date().toISOString() : undefined;
       setRoster(list);
       saveStoredRoster(list);
+      void syncStudentToSupabase(list[idx]);
     }
   }
 
@@ -2371,8 +2458,27 @@ export function VerificationPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
+              disabled={refreshingLiveExness}
+              onClick={handleRefreshLiveFromExness}
+              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={refreshingLiveExness ? "animate-spin" : ""} />
+              {refreshingLiveExness ? "Syncing from Exness..." : "Refresh Live Exness Link Data"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyUpgradeSql}
+              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition cursor-pointer flex items-center gap-1.5"
+            >
+              {upgradeSqlCopied ? <Check size={14} /> : <Copy size={14} />}
+              {upgradeSqlCopied
+                ? "Copied SQL!"
+                : "Copy exness_partner_clients SQL"}
+            </button>
+            <button
+              type="button"
               onClick={handleCopySchema}
-              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5"
+              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition cursor-pointer flex items-center gap-1.5"
             >
               {schemaCopied ? <Check size={14} /> : <Copy size={14} />}
               {schemaCopied ? "Copied Full SQL Schema!" : "Copy Full SQL Schema"}
@@ -2628,18 +2734,30 @@ export function VerificationPage() {
         </form>
       </div>
 
-      {/* LIVE EXNESS PARTNER API REFERRED CLIENTS (PARTNER #1064144938140187556) */}
+      {/* LIVE EXNESS PARTNER API REFERRED CLIENTS & TRADING ACCOUNTS (PARTNER #1064144938140187556) */}
       <Card className="data-card mb-8">
         <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-              LIVE EXNESS PARTNER API · ACCOUNT #{OFFICIAL_PARTNER_ACCOUNT_ID}
+              public.exness_partner_clients · PARTNER ACCOUNT #{OFFICIAL_PARTNER_ACCOUNT_ID}
             </span>
             <h3 className="text-lg font-bold text-white mt-0.5">
-              Synced Exness Partner Referrals ({EXNESS_PARTNER_TOTALS.count} Clients)
+              Synced Exness Partner Trading Accounts ({EXNESS_PARTNER_CLIENTS.length} Trading Accounts · {EXNESS_PARTNER_TOTALS.count} Clients)
             </h3>
+            <p className="text-xs text-[#9aa4b5] mt-0.5">
+              Displays <code className="text-[#ffde02]">client_account_id</code>, <code className="text-[#ffde02]">client_id</code>, <code className="text-[#ffde02]">trading_account_id</code>, <code className="text-[#ffde02]">client_uid</code>, and <code className="text-[#ffde02]">partner_account</code>.
+            </p>
           </div>
-          <div className="flex items-center gap-3 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+            <button
+              type="button"
+              disabled={refreshingLiveExness}
+              onClick={handleRefreshLiveFromExness}
+              className="px-3.5 py-1.5 rounded-lg bg-[#ffde02]/15 border border-[#ffde02]/40 text-[#ffde02] font-sans font-bold hover:bg-[#ffde02]/25 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+            >
+              <RefreshCw size={13} className={refreshingLiveExness ? "animate-spin" : ""} />
+              {refreshingLiveExness ? "Refreshing..." : "Sync from Partner Link"}
+            </button>
             <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[#b8c0cc]">
               Volume: <b className="text-white">{EXNESS_PARTNER_TOTALS.volume_lots} lots</b>
             </span>
@@ -2648,30 +2766,51 @@ export function VerificationPage() {
             </span>
           </div>
         </div>
+        {liveExnessFeedback && (
+          <div className="mx-5 mb-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+            <CheckCircle2 size={15} />
+            <span>{liveExnessFeedback}</span>
+          </div>
+        )}
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
+                <th>Trading Account ID</th>
+                <th>Client Account ID</th>
+                <th>Client ID</th>
                 <th>Client UID</th>
+                <th>Partner Account</th>
+                <th>Type / Platform</th>
                 <th>Country</th>
-                <th>Registered</th>
-                <th>KYC &amp; FTD</th>
                 <th>Volume (Lots)</th>
-                <th>Partner Reward</th>
+                <th>Reward</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {EXNESS_PARTNER_CLIENTS.map((c) => (
-                <tr key={c.client_uid}>
-                  <td className="font-mono text-xs text-white">{c.client_uid}</td>
-                  <td>{c.client_country}</td>
-                  <td>{c.reg_date}</td>
-                  <td>
-                    <Badge tone={c.ftd_received ? "yellow" : "gray"}>
-                      {c.ftd_received ? "FTD FUNDED" : "NO DEPOSIT"}
-                    </Badge>
+                <tr key={c.id}>
+                  <td className="font-mono text-xs font-bold text-[#ffde02]">
+                    #{c.trading_account_id}
                   </td>
+                  <td className="font-mono text-xs text-white">
+                    {c.client_account_id}
+                  </td>
+                  <td className="font-mono text-xs text-[#cfd7e4]">
+                    {c.client_id}
+                  </td>
+                  <td className="font-mono text-[11px] text-[#9aa4b5]">
+                    {c.client_uid}
+                  </td>
+                  <td className="font-mono text-[11px] text-[#9aa4b5]">
+                    {c.partner_account}
+                  </td>
+                  <td>
+                    <span className="text-xs text-white">{c.account_type}</span>{" "}
+                    <small className="text-[10px] text-[#9aa4b5] font-mono">({c.platform})</small>
+                  </td>
+                  <td>{c.client_country}</td>
                   <td>{c.volume_lots.toFixed(3)}</td>
                   <td>
                     <strong className="text-[#ffde02]">${c.reward_usd}</strong>
@@ -2687,6 +2826,108 @@ export function VerificationPage() {
           </table>
         </div>
       </Card>
+
+      {/* REGISTER / PRE-APPROVE TRADING ACCOUNT IN CANDLESTICKS SUPABASE DATABASE */}
+      <div className="bg-[#151820] border border-white/10 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
+        <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
+          <div>
+            <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
+              Strict Database Gate · public.students
+            </span>
+            <h3 className="text-lg font-bold text-white mt-1">
+              Register / Approve Trading Account in Candlesticks Database
+            </h3>
+            <p className="text-xs text-[#9aa4b5] mt-0.5">
+              Only trading account numbers registered in your Supabase database (<code className="text-white">public.students</code> or <code className="text-white">public.exness_partner_clients</code>) are accepted during onboarding.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleRegisterApprovedAccount} className="mt-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Trader Name
+              </label>
+              <input
+                type="text"
+                value={newFullName}
+                onChange={(e) => setNewFullName(e.target.value)}
+                placeholder="e.g. Samuel Osei"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Exness Email *
+              </label>
+              <input
+                type="email"
+                required
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="trader@email.com"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Trading Account # *
+              </label>
+              <input
+                type="text"
+                required
+                value={newExnessId}
+                onChange={(e) => setNewExnessId(e.target.value)}
+                placeholder="e.g. 208473281"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Country
+              </label>
+              <input
+                type="text"
+                value={newCountry}
+                onChange={(e) => setNewCountry(e.target.value)}
+                placeholder="Ghana"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                Deposit ($ USD)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={newDepositAmount}
+                onChange={(e) => setNewDepositAmount(e.target.value)}
+                placeholder="50"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="submit"
+              disabled={addingAccount}
+              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer"
+            >
+              {addingAccount ? "Saving to Supabase..." : "+ Approve & Save Account to Supabase"}
+            </button>
+
+            {addAccountFeedback && (
+              <span className="text-xs text-[#ffde02] font-semibold flex items-center gap-1.5">
+                <CheckCircle2 size={15} /> {addAccountFeedback.message}
+              </span>
+            )}
+          </div>
+        </form>
+      </div>
 
       {/* STUDENT VERIFICATION QUEUE & MANAGEMENT TABLE */}
       <Card className="queue-summary">

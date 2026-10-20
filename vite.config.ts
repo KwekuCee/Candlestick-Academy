@@ -24,6 +24,7 @@ react(),
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      exnessSyncPlugin(),
     ],
     resolve: {
       alias: {
@@ -389,3 +390,79 @@ function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin
     },
   }
 }
+
+/**
+ * Connect middleware plugin that exposes /api/exness/* endpoints to:
+ * 1. Refresh live registrations from Exness Partner API and update Supabase SQL tables
+ * 2. Connect & pre-approve existing Exness accounts linking to partner link
+ */
+function exnessSyncPlugin(): Plugin {
+  const handler = async (req: any, res: any, next: any) => {
+    const rawUrl = req.url || ''
+    const pathname = rawUrl.split('?')[0]
+    if (!pathname.startsWith('/api/exness/')) return next()
+
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204
+      res.end()
+      return
+    }
+
+    try {
+      const { syncLiveExnessWithSupabase, connectExistingExnessClientInDb } = await import(
+        './src/server/exnessSync'
+      )
+      const urlObj = new URL(rawUrl, 'http://localhost')
+
+      if (pathname === '/api/exness/refresh' || pathname === '/api/exness/sync') {
+        const account = urlObj.searchParams.get('account') || undefined
+        const email = urlObj.searchParams.get('email') || undefined
+        const result = await syncLiveExnessWithSupabase({ account, email })
+        res.statusCode = 200
+        res.end(JSON.stringify(result))
+        return
+      }
+
+      if (pathname === '/api/exness/connect-existing' && req.method === 'POST') {
+        let body = ''
+        req.on('data', (chunk: any) => {
+          body += chunk
+        })
+        req.on('end', async () => {
+          try {
+            const parsed = JSON.parse(body || '{}')
+            const result = await connectExistingExnessClientInDb(parsed)
+            res.statusCode = 200
+            res.end(JSON.stringify(result))
+          } catch (e: any) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ success: false, message: e.message }))
+          }
+        })
+        return
+      }
+
+      res.statusCode = 404
+      res.end(JSON.stringify({ error: 'Endpoint not found' }))
+    } catch (err: any) {
+      res.statusCode = 500
+      res.end(JSON.stringify({ error: err.message }))
+    }
+  }
+
+  return {
+    name: 'exness-sync-server',
+    configureServer(server) {
+      server.middlewares.use(handler)
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(handler)
+    },
+  }
+}
+

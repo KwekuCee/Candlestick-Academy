@@ -5,11 +5,14 @@ import {
   OFFICIAL_PARTNER_CODE,
   OFFICIAL_PARTNER_LINK,
   checkExnessAccountDeposit,
+  connectExistingExnessClient,
   getStoredConfig,
   getStoredCurrentUser,
   getStoredRoster,
+  refreshRosterFromSupabase,
   saveStoredCurrentUser,
   saveStoredRoster,
+  syncExnessLiveWithSupabase,
   verifyExnessPartnerAccount,
 } from "./exnessStore";
 import {
@@ -105,6 +108,21 @@ export function OnboardingFlow() {
   const [showTicketHelper, setShowTicketHelper] = useState(false);
   const [ticketCopied, setTicketCopied] = useState(false);
 
+  // Live Partner Link Refresh & Connect Existing Account state
+  const [refreshingPartnerData, setRefreshingPartnerData] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
+  const [connectingExisting, setConnectingExisting] = useState(false);
+  const [connectFeedback, setConnectFeedback] = useState<{
+    success: boolean;
+    message: string;
+    ticketRef?: string;
+  } | null>(null);
+
+  // Matched database record state
+  const [matchedDbStudent, setMatchedDbStudent] = useState<ExnessStudent | null>(null);
+  const [verifiedClientId, setVerifiedClientId] = useState<string | undefined>(undefined);
+  const [verifiedClientUid, setVerifiedClientUid] = useState<string | undefined>(undefined);
+
   // Step 2 State: Create Candlesticks Academy Account
   const [fullName, setFullName] = useState("");
   const [country, setCountry] = useState("Ghana");
@@ -121,6 +139,7 @@ export function OnboardingFlow() {
   const [depositFeedback, setDepositFeedback] = useState<string | null>(null);
 
   useEffect(() => {
+    void refreshRosterFromSupabase();
     const existing = getStoredCurrentUser();
     if (existing && existing.fullName && existing.fullName !== "Kwame Mensah") {
       setFullName(existing.fullName);
@@ -165,24 +184,78 @@ Thank you.`;
     setTimeout(() => setTicketCopied(false), 2500);
   }
 
-  // Step 1: Verify Exness Email + Trading Account against Partner Link
+  // Live manual refresh from Exness Partner Link into Supabase SQL
+  async function handleRefreshPartnerData() {
+    setRefreshingPartnerData(true);
+    setRefreshFeedback(null);
+    const res = await syncExnessLiveWithSupabase({
+      account: exnessIdInput.trim() || undefined,
+      email: exnessEmailInput.trim() || undefined,
+    });
+    setRefreshingPartnerData(false);
+    setRefreshFeedback(res.message);
+    setTimeout(() => setRefreshFeedback(null), 4000);
+  }
+
+  // Handle existing account connection: immediately registers in Supabase and proceeds
+  async function handleConnectExistingAccount(e: FormEvent) {
+    e.preventDefault();
+    const cleanAccount = exnessIdInput.trim();
+    const cleanEmail = exnessEmailInput.trim();
+
+    if (!cleanAccount || !cleanEmail) {
+      setConnectFeedback({
+        success: false,
+        message: "Please enter both your Exness Registered Email and Trading Account Number.",
+      });
+      return;
+    }
+
+    setConnectingExisting(true);
+    setConnectFeedback(null);
+    const res = await connectExistingExnessClient({
+      tradingAccountId: cleanAccount,
+      email: cleanEmail,
+      country,
+    });
+    setConnectingExisting(false);
+    setConnectFeedback(res);
+
+    if (res.success) {
+      setSelectedHasAccount(true);
+      setTimeout(async () => {
+        setVerifying(true);
+        const verifyRes = await verifyExnessPartnerAccount(cleanAccount, config, cleanEmail);
+        setVerifying(false);
+        if (verifyRes.success) {
+          setEmail(cleanEmail);
+          setVerifiedClientId(verifyRes.clientId);
+          setVerifiedClientUid(verifyRes.clientUid);
+          setStep(2);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 600);
+    }
+  }
+
+  // Step 1: Verify Exness Trading Account ID against Candlesticks Supabase Database
   async function handleVerifyReferral(e: FormEvent) {
     e.preventDefault();
     const trimmedEmail = exnessEmailInput.trim();
     const trimmedAccount = exnessIdInput.trim();
 
-    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+    if (!trimmedAccount) {
       setVerificationFeedback({
         success: false,
-        message: "Please enter the valid email address associated with your Exness account.",
+        message: "Please enter your Exness Trading Account ID (Trading Account Number, e.g. 16544022).",
       });
       return;
     }
 
-    if (!trimmedAccount) {
+    if (trimmedEmail && !trimmedEmail.includes("@")) {
       setVerificationFeedback({
         success: false,
-        message: "Please enter your Exness Trading Account Number (e.g. 208471945).",
+        message: "Please enter a valid email address or leave email blank until Step 2.",
       });
       return;
     }
@@ -190,11 +263,36 @@ Thank you.`;
     setVerifying(true);
     setVerificationFeedback(null);
 
-    const result = await verifyExnessPartnerAccount(trimmedAccount, config, trimmedEmail);
+    const result = await verifyExnessPartnerAccount(
+      trimmedAccount,
+      config,
+      trimmedEmail ? trimmedEmail : undefined
+    );
     setVerifying(false);
 
     if (result.success) {
-      setEmail(trimmedEmail);
+      if (trimmedEmail) {
+        setEmail(trimmedEmail);
+      } else if (result.matchedStudent?.email && !result.matchedStudent.email.endsWith("@partner.exness.com")) {
+        setEmail(result.matchedStudent.email);
+      }
+      setCurrentDeposit(0);
+      setVerifiedClientId(result.clientId);
+      setVerifiedClientUid(result.clientUid);
+      if (result.matchedStudent) {
+        setMatchedDbStudent(result.matchedStudent);
+        if (
+          !fullName &&
+          result.matchedStudent.fullName &&
+          !result.matchedStudent.fullName.startsWith("Exness Trader #")
+        ) {
+          setFullName(result.matchedStudent.fullName);
+        }
+        if (result.matchedStudent.country) {
+          setCountry(result.matchedStudent.country);
+        }
+      }
+
       setVerificationFeedback({
         success: true,
         message: result.message,
@@ -235,19 +333,25 @@ Thank you.`;
     }
 
     const user = getStoredCurrentUser();
+    const isFunded = currentDeposit >= 50;
     const updatedUser: ExnessStudent = {
       ...user,
-      id: `std-${Date.now()}`,
+      id: matchedDbStudent?.id || `std-${Date.now()}`,
       fullName: fullName.trim(),
       country,
       email: email.trim(),
       hasExnessAccount: true,
       exnessId: exnessIdInput.trim(),
       exnessEmail: exnessEmailInput.trim() || email.trim(),
+      exnessClientId: verifiedClientId || matchedDbStudent?.exnessClientId,
+      exnessClientUid: verifiedClientUid || matchedDbStudent?.exnessClientUid,
       partnerLinked: true,
-      partnerLinkedAt: new Date().toISOString(),
+      partnerLinkedAt: matchedDbStudent?.partnerLinkedAt || new Date().toISOString(),
+      depositAmount: currentDeposit,
+      depositVerified: isFunded,
+      depositVerifiedAt: isFunded ? new Date().toISOString() : undefined,
       ticketStatus: showTicketHelper ? "submitted" : "verified",
-      registrationDate: new Date().toISOString(),
+      registrationDate: matchedDbStudent?.registrationDate || new Date().toISOString(),
     };
 
     saveStoredCurrentUser(updatedUser, password);
@@ -255,7 +359,9 @@ Thank you.`;
     // Sync to Admin Student Roster
     const roster = getStoredRoster();
     const existingIdx = roster.findIndex(
-      (s) => s.email.toLowerCase() === updatedUser.email.toLowerCase()
+      (s) =>
+        s.email.toLowerCase() === updatedUser.email.toLowerCase() ||
+        (s.exnessId && s.exnessId.toLowerCase() === updatedUser.exnessId.toLowerCase())
     );
     if (existingIdx >= 0) {
       roster[existingIdx] = updatedUser;
@@ -538,68 +644,118 @@ Thank you.`;
                     2. I already have an Exness account
                   </h3>
                   <p className="text-xs text-[#949fb1] mt-2 leading-relaxed">
-                    Select this once you have created your Exness account via our link (or if you already hold an Exness account) to verify your email &amp; trading ID.
+                    Select this once you have created your Exness account with our Partner Link (<strong className="text-white font-mono">{partnerCode}</strong>) to enter your <strong className="text-white">Trading Account ID</strong> and verify your referral.
                   </p>
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-xs font-bold text-[#ffde02]">
-                  <span>{selectedHasAccount ? "Enter Email & Trading ID Below ↓" : "Select to Verify Account"}</span>
+                  <span>{selectedHasAccount ? "Enter Trading Account ID Below ↓" : "Select to Verify Account"}</span>
                   <ArrowRight size={16} />
                 </div>
               </button>
             </div>
 
-            {/* When "I already have an Exness account" is selected -> Show Email & Trading Account Verification Form */}
+            {/* When "I already have an Exness account" is selected -> Show Trading Account ID Verification Form */}
             {selectedHasAccount && (
               <div className="mt-7 p-6 rounded-2xl bg-[#11141a] border-2 border-[#ffde02]/35 space-y-5 animate-fadeIn">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-white/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
                   <div>
                     <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#ffde02] flex items-center gap-1.5">
                       <ShieldCheck size={15} /> VERIFY PARTNER REFERRAL (#{partnerCode})
                     </span>
                     <h3 className="text-base sm:text-lg font-bold text-white mt-0.5">
-                      Submit Your Exness Email &amp; Trading Account
+                      Enter Your Exness Trading Account ID (Trading Account Number)
                     </h3>
+                    <p className="text-xs text-[#9aa4b5] mt-1">
+                      We verify your <strong className="text-white font-mono">trading_account_id</strong> / <strong className="text-white font-mono">client_account_id</strong> against your Exness Partner referrals in Supabase. Once verified, you will create your account and be led to make the <strong className="text-[#ffde02]">$50 USD deposit</strong> to activate all platform features.
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExnessEmailInput("trader@example.com");
-                      setExnessIdInput("208471945");
-                    }}
-                    className="text-xs text-[#ffde02] hover:underline font-mono self-start sm:self-auto cursor-pointer"
-                  >
-                    Auto-fill demo referral
-                  </button>
+
+                  {/* Refresh from Live Exness Partner Link button */}
+                  <div className="flex flex-col sm:items-end gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      disabled={refreshingPartnerData}
+                      onClick={handleRefreshPartnerData}
+                      className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      title="Syncs latest registrations directly from Exness Partner API into Supabase SQL"
+                    >
+                      <RefreshCw size={13} className={refreshingPartnerData ? "animate-spin text-[#ffde02]" : "text-[#ffde02]"} />
+                      <span>{refreshingPartnerData ? "Syncing from Exness..." : "Refresh Exness Data"}</span>
+                    </button>
+                    {refreshFeedback && (
+                      <span className="text-[10px] text-[#ffde02] font-mono flex items-center gap-1">
+                        <Check size={11} strokeWidth={3} /> {refreshFeedback}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick-Select Real Partner Trading Account IDs from Exness API */}
+                <div className="p-3.5 rounded-xl bg-[#161a23] border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10.5px] font-mono uppercase tracking-wider text-[#9aa4b5]">
+                      Synced Partner Trading Account IDs (<code className="text-[#ffde02]">exness_partner_clients</code> · Click to test):
+                    </span>
+                    <span className="text-[10px] font-mono text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
+                      Live Auto-Sync Active
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { acct: "16544022", client: "c117236d" },
+                      { acct: "168421982", client: "c117236d" },
+                      { acct: "173174690", client: "c117236d" },
+                      { acct: "171396502", client: "81b02ffb" },
+                      { acct: "171192597", client: "d8e89780" },
+                      { acct: "59864023", client: "eaeae957" },
+                      { acct: "208471945", client: "c117236d" },
+                    ].map((item) => (
+                      <button
+                        key={item.acct}
+                        type="button"
+                        onClick={() => {
+                          setExnessIdInput(item.acct);
+                          setVerificationFeedback(null);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition cursor-pointer ${
+                          exnessIdInput === item.acct
+                            ? "bg-[#ffde02] text-black border-[#ffde02] font-bold"
+                            : "bg-white/5 text-[#cfd7e4] border-white/10 hover:border-[#ffde02]/50"
+                        }`}
+                      >
+                        #{item.acct} <span className="opacity-70">({item.client})</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <form onSubmit={handleVerifyReferral} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                        Exness Registered Email <span className="text-[#ffde02]">*</span>
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        value={exnessEmailInput}
-                        onChange={(e) => setExnessEmailInput(e.target.value)}
-                        placeholder="you@example.com"
-                        className="w-full bg-[#181c24] border border-white/15 rounded-xl px-4 py-3 text-white placeholder-[#5a6475] focus:outline-none focus:border-[#ffde02] text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                        Exness Trading Account Number <span className="text-[#ffde02]">*</span>
+                        Exness Trading Account ID (Trading Account #) <span className="text-[#ffde02]">*</span>
                       </label>
                       <input
                         type="text"
                         required
                         value={exnessIdInput}
                         onChange={(e) => setExnessIdInput(e.target.value)}
-                        placeholder="e.g. 208471945"
+                        placeholder="e.g. 16544022 or 173174690"
                         className="w-full bg-[#181c24] border border-white/15 rounded-xl px-4 py-3 text-white placeholder-[#5a6475] focus:outline-none focus:border-[#ffde02] text-sm font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+                        Exness Registered Email <span className="text-[#7d8799] font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={exnessEmailInput}
+                        onChange={(e) => setExnessEmailInput(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full bg-[#181c24] border border-white/15 rounded-xl px-4 py-3 text-white placeholder-[#5a6475] focus:outline-none focus:border-[#ffde02] text-sm"
                       />
                     </div>
                   </div>
@@ -635,7 +791,7 @@ Thank you.`;
                       <>
                         <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                         <span style={{ color: "#0b0d0f" }}>
-                          Checking Partner Link Referral ({partnerCode})...
+                          Checking Live Exness Link &amp; Auto-Syncing Database...
                         </span>
                       </>
                     ) : (
@@ -649,7 +805,7 @@ Thank you.`;
                   </button>
                 </form>
 
-                {/* Support Ticket Helper - "Submit a Partner Transfer Ticket" placed directly UNDER the question */}
+                {/* Support Ticket & Instant Account Connection Helper */}
                 <div className="pt-4 border-t border-white/10">
                   <p className="text-xs text-[#9aa4b5] flex items-center gap-1.5">
                     <SlidersHorizontal size={13} className="text-[#ffde02] shrink-0" />
@@ -661,44 +817,112 @@ Thank you.`;
                     className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline cursor-pointer pl-5"
                   >
                     <span>
-                      {showTicketHelper ? "Hide Partner Transfer Ticket" : "Submit a Partner Transfer Ticket"}
+                      {showTicketHelper ? "Hide Partner Transfer & Connection Form" : "Connect Existing Account & Submit Partner Transfer Ticket"}
                     </span>
                     <ArrowRight size={13} />
                   </button>
 
                   {showTicketHelper && (
-                    <div className="mt-3 p-4 rounded-xl bg-[#0c0e13] border border-white/10 space-y-3 text-xs">
-                      <p className="text-[#9ea8b8] leading-relaxed">
-                        Send this email request from your registered Exness email to{" "}
-                        <strong className="text-white">{config.supportEmail}</strong> to link your existing profile under Partner Code{" "}
-                        <strong className="text-[#ffde02] font-mono">{partnerCode}</strong>:
-                      </p>
-                      <div className="p-3 rounded-lg bg-black/50 border border-white/5 font-mono text-[11px] text-[#cfd7e4] whitespace-pre-wrap">
-                        <div className="text-white font-bold mb-1">Subject: {ticketSubject}</div>
-                        {ticketBody}
-                      </div>
-                      <div className="flex flex-wrap gap-2.5">
-                        <button
-                          type="button"
-                          onClick={copyTicketContent}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-[11px] cursor-pointer"
-                        >
-                          {ticketCopied ? <Check size={13} className="text-[#ffde02]" /> : <Copy size={13} />}
-                          {ticketCopied ? "Copied!" : "Copy Ticket"}
-                        </button>
-                        <a
-                          href={`mailto:${config.supportEmail}?subject=${encodeURIComponent(
-                            ticketSubject
-                          )}&body=${encodeURIComponent(ticketBody)}`}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full font-bold text-[11px]"
-                          style={{
-                            background: "linear-gradient(145deg, #fff06c 0%, #ffde02 48%, #e7c900 100%)",
-                            color: "#0b0d0f",
-                          }}
-                        >
-                          <Mail size={13} color="#0b0d0f" />
-                          <span style={{ color: "#0b0d0f" }}>Open Email App</span>
-                        </a>
+                    <div className="mt-4 p-5 rounded-xl bg-[#0c0e13] border border-white/10 space-y-4 text-xs">
+                      {/* Form: Instant Account Connection to Database */}
+                      <form onSubmit={handleConnectExistingAccount} className="p-4 rounded-xl bg-[#141822] border border-[#ffde02]/30 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <CheckCircle2 size={14} className="text-[#ffde02]" /> Connect Existing Exness Account to Database
+                          </span>
+                          <span className="text-[10px] font-mono text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded self-start sm:self-auto">
+                            Auto-updates Supabase SQL
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#9aa4b5] leading-relaxed">
+                          If you already had an Exness account or just submitted a transfer, enter your account details below. We immediately link your account in the Candlesticks Supabase database so you can proceed to create your academy account!
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10.5px] uppercase font-bold text-[#8e97a6] mb-1">
+                              Exness Registered Email *
+                            </label>
+                            <input
+                              type="email"
+                              required
+                              value={exnessEmailInput}
+                              onChange={(e) => setExnessEmailInput(e.target.value)}
+                              placeholder="you@example.com"
+                              className="w-full bg-[#0a0c10] border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10.5px] uppercase font-bold text-[#8e97a6] mb-1">
+                              Trading Account ID (Account #) *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={exnessIdInput}
+                              onChange={(e) => setExnessIdInput(e.target.value)}
+                              placeholder="e.g. 208473281"
+                              className="w-full bg-[#0a0c10] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <button
+                            type="submit"
+                            disabled={connectingExisting}
+                            className="px-4 py-2 rounded-full bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            {connectingExisting ? (
+                              <>
+                                <RefreshCw size={12} className="animate-spin" /> Connecting &amp; Syncing to Database...
+                              </>
+                            ) : (
+                              <>
+                                <Check size={13} strokeWidth={3} /> Connect Account &amp; Proceed to Academy →
+                              </>
+                            )}
+                          </button>
+                          {connectFeedback && (
+                            <span className="text-[11px] text-[#ffde02] font-semibold flex items-center gap-1">
+                              <CheckCircle2 size={13} /> {connectFeedback.message}
+                            </span>
+                          )}
+                        </div>
+                      </form>
+
+                      {/* Step-by-step Exness Ticket Guide */}
+                      <div className="pt-2">
+                        <p className="text-[#9ea8b8] leading-relaxed">
+                          Also send this formal request to Exness Support from your registered email to link your account under Partner Code{" "}
+                          <strong className="text-[#ffde02] font-mono">{partnerCode}</strong>:
+                        </p>
+                        <div className="mt-2 p-3 rounded-lg bg-black/50 border border-white/5 font-mono text-[11px] text-[#cfd7e4] whitespace-pre-wrap">
+                          <div className="text-white font-bold mb-1">Subject: {ticketSubject}</div>
+                          {ticketBody}
+                        </div>
+                        <div className="flex flex-wrap gap-2.5 mt-3">
+                          <button
+                            type="button"
+                            onClick={copyTicketContent}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-[11px] cursor-pointer"
+                          >
+                            {ticketCopied ? <Check size={13} className="text-[#ffde02]" /> : <Copy size={13} />}
+                            {ticketCopied ? "Copied!" : "Copy Ticket"}
+                          </button>
+                          <a
+                            href={`mailto:${config.supportEmail}?subject=${encodeURIComponent(
+                              ticketSubject
+                            )}&body=${encodeURIComponent(ticketBody)}`}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full font-bold text-[11px]"
+                            style={{
+                              background: "linear-gradient(145deg, #fff06c 0%, #ffde02 48%, #e7c900 100%)",
+                              color: "#0b0d0f",
+                            }}
+                          >
+                            <Mail size={13} color="#0b0d0f" />
+                            <span style={{ color: "#0b0d0f" }}>Open Email App</span>
+                          </a>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -724,8 +948,15 @@ Thank you.`;
               <div className="flex items-center gap-2.5 text-xs text-[#ffde02] font-semibold">
                 <CheckCircle2 size={17} className="shrink-0" />
                 <span>
-                  Exness Referral Approved! Account <strong className="font-mono">#{exnessIdInput || "208471945"}</strong> verified under Partner Code{" "}
-                  <strong className="font-mono">{partnerCode}</strong>.
+                  Exness Referral Verified! Trading Account ID{" "}
+                  <strong className="font-mono">#{exnessIdInput}</strong>
+                  {verifiedClientId && (
+                    <>
+                      {" "}
+                      · Client ID <strong className="font-mono">{verifiedClientId}</strong>
+                    </>
+                  )}{" "}
+                  confirmed under Partner Code <strong className="font-mono">{partnerCode}</strong>.
                 </span>
               </div>
               <button
