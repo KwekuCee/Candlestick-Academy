@@ -1,5 +1,6 @@
 {
-  "description": "This web application streamlines design requests, allowing users to easily submit and manage their design projects, enhancing collaboration and efficiency.",
+  "title": "Candlestick Academy",
+  "description": "Candlestick Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.",
   "robots": {
     "index": false
   },
