@@ -428,7 +428,7 @@ function exnessSyncPlugin(): Plugin {
         return
       }
 
-      if (pathname === '/api/exness/connect-existing' && req.method === 'POST') {
+      if ((pathname === '/api/exness/connect-existing' || pathname === '/api/exness/submit-transfer-ticket') && req.method === 'POST') {
         let body = ''
         req.on('data', (chunk: any) => {
           body += chunk

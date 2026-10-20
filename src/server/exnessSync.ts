@@ -381,19 +381,28 @@ export async function syncLiveExnessWithSupabase(query?: {
   };
 }
 
-/**
- * Handles transferred / existing Exness accounts linking to the partner link:
- * Immediately adds a support ticket and registers the account in Supabase
- */
 export async function connectExistingExnessClientInDb(params: {
   tradingAccountId: string;
   email: string;
   fullName?: string;
   country?: string;
+  destinationEmail?: string;
+  partnerEmail?: string;
 }): Promise<{
   success: boolean;
   message: string;
   ticketRef: string;
+  emailDetails?: {
+    destinationEmail: string;
+    partnerEmail: string;
+    partnerLink: string;
+    partnerCode: string;
+    partnerAccountId: string;
+    clientEmail: string;
+    tradingAccountId: string;
+    subject: string;
+    body: string;
+  };
 }> {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -401,6 +410,9 @@ export async function connectExistingExnessClientInDb(params: {
   const cleanAccount = params.tradingAccountId.trim();
   const cleanEmail = params.email.trim().toLowerCase();
   const ticketRef = `TKT-${cleanAccount.slice(-4)}-${Date.now().toString().slice(-4)}`;
+  const partnerEmail = params.partnerEmail?.trim() || "mike.vinci77@gmail.com";
+  const destinationEmail = params.destinationEmail?.trim() || "partner.support@exness.com";
+  const partnerLink = "https://one.exnessonelink.com/a/qgcrue4rqj";
 
   if (!cleanAccount || !cleanEmail) {
     return {
@@ -410,9 +422,37 @@ export async function connectExistingExnessClientInDb(params: {
     };
   }
 
+  const subject = `Exness Partner Account Affiliation Request - Account #${cleanAccount} (Partner Code: ${PARTNER_CODE})`;
+  const body = `Dear Exness Partner Support Team,
+
+I am requesting that my Exness trading account be transferred and affiliated under the partner account listed below.
+
+PARTNER DETAILS:
+• Partner Email: ${partnerEmail}
+• Partner Link: ${partnerLink}
+• Partner ID / Code: ${PARTNER_CODE}
+• Partner Account ID: ${PARTNER_ACCOUNT_ID}
+
+CLIENT DETAILS:
+• Registered Exness Email: ${cleanEmail}
+• Trading Account ID: ${cleanAccount}
+• Full Name: ${params.fullName?.trim() || "Exness Trader"}
+• Country: ${params.country || "Ghana"}
+• Ticket Reference: #${ticketRef}
+
+REQUEST & DECLARATION:
+I hereby authorize and request Exness to transfer and affiliate my trading account (#${cleanAccount}) under Partner ID: ${PARTNER_CODE} (Partner Account: ${PARTNER_ACCOUNT_ID}, Email: ${partnerEmail}). I confirm this transfer is voluntary for Candlesticks Academy access.
+
+Please confirm once the account affiliation has been successfully completed.
+
+Best regards,
+${cleanEmail}`;
+
   if (supabaseUrl && serviceKey) {
     try {
-      // 1. Create support ticket
+      // 1. Log transfer ticket in `public.support_tickets` with status 'submitted'
+      // Note: We deliberately do NOT pre-approve or add to exness_partner_clients.
+      // Verification happens once Exness connects the account to the partner link!
       await fetch(`${supabaseUrl}/rest/v1/support_tickets`, {
         method: "POST",
         headers: {
@@ -429,84 +469,25 @@ export async function connectExistingExnessClientInDb(params: {
           submitted_at: new Date().toISOString(),
         }),
       });
-
-      // 2. Pre-approve student profile in `public.students` so onboarding succeeds
-      const studentId = `std-${Date.now()}`;
-      await fetch(`${supabaseUrl}/rest/v1/students?on_conflict=email`, {
-        method: "POST",
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          "Content-Type": "application/json",
-          Prefer: "resolution=merge-duplicates",
-        },
-        body: JSON.stringify([
-          {
-            id: studentId,
-            full_name: params.fullName?.trim() || `Trader #${cleanAccount}`,
-            country: params.country || "Ghana",
-            email: cleanEmail,
-            has_exness_account: true,
-            exness_id: cleanAccount,
-            exness_email: cleanEmail,
-            partner_code: PARTNER_CODE,
-            partner_linked: true,
-            partner_linked_at: new Date().toISOString(),
-            deposit_amount: 0,
-            deposit_verified: false,
-            ticket_status: "submitted",
-            ticket_details: {
-              ticketRef,
-              tradingAccountId: cleanAccount,
-              exnessEmail: cleanEmail,
-              submittedAt: new Date().toISOString(),
-            },
-            updated_at: new Date().toISOString(),
-          },
-        ]),
-      });
-
-      // 3. Register in `public.exness_partner_clients`
-      const shortId = `cl-${cleanAccount.slice(0, 6)}`;
-      await fetch(`${supabaseUrl}/rest/v1/exness_partner_clients?on_conflict=id`, {
-        method: "POST",
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          "Content-Type": "application/json",
-          Prefer: "resolution=merge-duplicates",
-        },
-        body: JSON.stringify([
-          {
-            id: `acct-${cleanAccount}`,
-            client_account_id: cleanAccount,
-            client_id: shortId,
-            trading_account_id: cleanAccount,
-            client_uid: `uid-${cleanAccount}`,
-            partner_account: PARTNER_ACCOUNT_ID,
-            link_code: PARTNER_CODE,
-            account_type: "Standard",
-            platform: "MT5",
-            reg_date: new Date().toISOString().slice(0, 10),
-            client_country: params.country ? params.country.slice(0, 2).toUpperCase() : "GH",
-            volume_lots: 0,
-            volume_mln_usd: 0,
-            reward_usd: 0,
-            client_status: "ACTIVE",
-            kyc_passed: true,
-            ftd_received: false,
-            synced_at: new Date().toISOString(),
-          },
-        ]),
-      });
     } catch (e) {
-      console.error("Error saving connected account to Supabase:", e);
+      console.error("Error logging support ticket in Supabase:", e);
     }
   }
 
   return {
     success: true,
-    message: `Account #${cleanAccount} is registered and connected under Partner Link (${PARTNER_CODE}). Transfer Ticket #${ticketRef} logged. You can now proceed with your Candlesticks Academy registration!`,
+    message: `Partner Transfer Ticket #${ticketRef} generated! Please send the formal request email to Exness (${destinationEmail}). Once Exness links your account to Partner Code ${PARTNER_CODE}, your account will appear on our Partner Dashboard. Return here and enter your Trading Account ID to verify.`,
     ticketRef,
+    emailDetails: {
+      destinationEmail,
+      partnerEmail,
+      partnerLink,
+      partnerCode: PARTNER_CODE,
+      partnerAccountId: PARTNER_ACCOUNT_ID,
+      clientEmail: cleanEmail,
+      tradingAccountId: cleanAccount,
+      subject,
+      body,
+    },
   };
 }

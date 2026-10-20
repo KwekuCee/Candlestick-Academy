@@ -25,6 +25,7 @@ import {
   syncStudentToSupabase,
   verifyExnessPartnerAccount,
 } from "./exnessStore";
+import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import {
   AlertCircle,
   ArrowRight,
@@ -2289,12 +2290,107 @@ export function VerificationPage() {
     message: string;
   } | null>(null);
 
+  // Exness Partner Transfer Tickets State
+  const [transferTickets, setTransferTickets] = useState<Array<{
+    id?: string;
+    ticket_ref: string;
+    exness_email: string;
+    trading_account_id: string;
+    partner_code: string;
+    status: string;
+    submitted_at: string;
+  }>>([]);
+  const [checkingTicket, setCheckingTicket] = useState<string | null>(null);
+  const [ticketActionFeedback, setTicketActionFeedback] = useState<string | null>(null);
+
+  async function loadTransferTickets() {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase
+          .from("support_tickets")
+          .select("*")
+          .order("submitted_at", { ascending: false });
+        if (Array.isArray(data) && data.length > 0) {
+          setTransferTickets(data);
+          return;
+        }
+      } catch (err) {
+        console.debug("Note on fetching support_tickets:", err);
+      }
+    }
+    // Fallback local storage tickets
+    try {
+      const raw = localStorage.getItem("candlesticks_submitted_transfer_tickets");
+      if (raw) {
+        const list = JSON.parse(raw);
+        setTransferTickets(
+          list.map((t: any) => ({
+            ticket_ref: t.ticketRef,
+            exness_email: t.email,
+            trading_account_id: t.tradingAccountId,
+            partner_code: "qgcrue4rqj",
+            status: "submitted",
+            submitted_at: t.submittedAt,
+          }))
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     void refreshRosterFromSupabase().then(setRoster);
-    const sync = () => setRoster(getStoredRoster());
+    void loadTransferTickets();
+    const sync = () => {
+      setRoster(getStoredRoster());
+      void loadTransferTickets();
+    };
     window.addEventListener("candlesticks_roster_updated", sync);
     return () => window.removeEventListener("candlesticks_roster_updated", sync);
   }, []);
+
+  async function handleCheckTicketOnExness(ticket: { ticket_ref: string; trading_account_id: string; exness_email: string }) {
+    setCheckingTicket(ticket.ticket_ref);
+    setTicketActionFeedback(null);
+    const res = await syncExnessLiveWithSupabase({
+      account: ticket.trading_account_id,
+      email: ticket.exness_email,
+    });
+    setCheckingTicket(null);
+    setTicketActionFeedback(res.message);
+    await loadTransferTickets();
+    const updated = await refreshRosterFromSupabase();
+    setRoster(updated);
+    setTimeout(() => setTicketActionFeedback(null), 5000);
+  }
+
+  async function handleApproveTicketSeenOnExness(ticket: { ticket_ref: string; trading_account_id: string; exness_email: string }) {
+    setCheckingTicket(ticket.ticket_ref);
+    await registerApprovedTradingAccountInSupabase({
+      fullName: `Trader #${ticket.trading_account_id}`,
+      email: ticket.exness_email,
+      country: "Ghana",
+      exnessId: ticket.trading_account_id,
+      depositAmount: 0,
+    });
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from("support_tickets")
+          .update({ status: "verified", resolved_at: new Date().toISOString() })
+          .eq("ticket_ref", ticket.ticket_ref);
+      } catch (err) {
+        console.debug("Note on updating support_tickets:", err);
+      }
+    }
+    setCheckingTicket(null);
+    setTicketActionFeedback(`Account #${ticket.trading_account_id} approved as connected under Partner Code ${config.partnerCode}!`);
+    await loadTransferTickets();
+    const updated = await refreshRosterFromSupabase();
+    setRoster(updated);
+    setTimeout(() => setTicketActionFeedback(null), 5000);
+  }
 
   async function handleRegisterApprovedAccount(e: FormEvent) {
     e.preventDefault();
@@ -2345,6 +2441,7 @@ export function VerificationPage() {
     setLiveExnessFeedback(res.message);
     const updated = await refreshRosterFromSupabase();
     setRoster(updated);
+    await loadTransferTickets();
     setTimeout(() => setLiveExnessFeedback(null), 5000);
   }
 
@@ -2822,6 +2919,115 @@ export function VerificationPage() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* SUBMITTED EXNESS PARTNER TRANSFER TICKETS (public.support_tickets) */}
+      <Card className="data-card mb-8">
+        <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+              public.support_tickets · PARTNER ACCOUNT TRANSFERS
+            </span>
+            <h3 className="text-lg font-bold text-white mt-0.5">
+              Exness Partner Transfer Tickets ({transferTickets.length} Requests)
+            </h3>
+            <p className="text-xs text-[#9aa4b5] mt-0.5">
+              Clients who registered on Exness without your partner link submit transfer tickets here. When Exness connects their account to your partner dashboard, it is verified automatically.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadTransferTickets}
+              className="px-3.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={13} />
+              <span>Reload Tickets</span>
+            </button>
+          </div>
+        </div>
+
+        {ticketActionFeedback && (
+          <div className="mx-5 my-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+            <CheckCircle2 size={15} />
+            <span>{ticketActionFeedback}</span>
+          </div>
+        )}
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket Ref</th>
+                <th>Client Exness Email</th>
+                <th>Trading Account ID</th>
+                <th>Partner Code</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transferTickets.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-6 text-xs text-[#7d8799]">
+                    No partner transfer tickets submitted yet. When users submit tickets from the onboarding page, they appear here.
+                  </td>
+                </tr>
+              ) : (
+                transferTickets.map((t) => (
+                  <tr key={t.ticket_ref}>
+                    <td className="font-mono text-xs font-bold text-[#ffde02]">
+                      #{t.ticket_ref}
+                    </td>
+                    <td className="text-xs text-white">
+                      {t.exness_email}
+                    </td>
+                    <td className="font-mono text-xs text-[#ffde02] font-bold">
+                      #{t.trading_account_id}
+                    </td>
+                    <td className="font-mono text-xs text-[#9aa4b5]">
+                      {t.partner_code || config.partnerCode}
+                    </td>
+                    <td>
+                      <Badge tone={t.status === "verified" ? "yellow" : "gray"}>
+                        {t.status === "verified" ? "AFFILIATED & VERIFIED" : "AWAITING EXNESS LINK"}
+                      </Badge>
+                    </td>
+                    <td className="text-[11px] text-[#9aa4b5]">
+                      {t.submitted_at ? new Date(t.submitted_at).toLocaleDateString() : "Recent"}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={checkingTicket === t.ticket_ref}
+                          onClick={() => handleCheckTicketOnExness(t)}
+                          className="px-2.5 py-1 rounded bg-[#ffde02]/15 hover:bg-[#ffde02]/25 text-[11px] font-bold text-[#ffde02] border border-[#ffde02]/40 transition cursor-pointer flex items-center gap-1 disabled:opacity-60"
+                          title="Queries Exness API to check if this trading account is affiliated yet"
+                        >
+                          <RefreshCw size={11} className={checkingTicket === t.ticket_ref ? "animate-spin" : ""} />
+                          <span>{checkingTicket === t.ticket_ref ? "Checking..." : "Check Exness Link"}</span>
+                        </button>
+                        {t.status !== "verified" && (
+                          <button
+                            type="button"
+                            disabled={checkingTicket === t.ticket_ref}
+                            onClick={() => handleApproveTicketSeenOnExness(t)}
+                            className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/15 text-[11px] font-bold text-white transition cursor-pointer"
+                            title="Approve this account if you have confirmed it in your Exness partner web dashboard"
+                          >
+                            Approve Once Seen on Exness
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

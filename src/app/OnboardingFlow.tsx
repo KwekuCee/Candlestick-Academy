@@ -1,9 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
+  DEFAULT_EXNESS_SUPPORT_EMAIL,
+  DEFAULT_PARTNER_EMAIL,
   ExnessStudent,
+  OFFICIAL_PARTNER_ACCOUNT_ID,
   OFFICIAL_PARTNER_CODE,
   OFFICIAL_PARTNER_LINK,
+  PartnerTransferTicketResult,
   checkExnessAccountDeposit,
   connectExistingExnessClient,
   getStoredConfig,
@@ -107,6 +111,12 @@ export function OnboardingFlow() {
   } | null>(null);
   const [showTicketHelper, setShowTicketHelper] = useState(false);
   const [ticketCopied, setTicketCopied] = useState(false);
+  const [ticketEmailCopied, setTicketEmailCopied] = useState(false);
+
+  // Exness Partner Transfer Email destinations (customizable)
+  const [destinationEmail, setDestinationEmail] = useState(DEFAULT_EXNESS_SUPPORT_EMAIL);
+  const [partnerEmail, setPartnerEmail] = useState(DEFAULT_PARTNER_EMAIL);
+  const [transferResult, setTransferResult] = useState<PartnerTransferTicketResult | null>(null);
 
   // Live Partner Link Refresh & Connect Existing Account state
   const [refreshingPartnerData, setRefreshingPartnerData] = useState(false);
@@ -163,27 +173,6 @@ export function OnboardingFlow() {
     setTimeout(() => setPartnerIdCopied(false), 2000);
   }
 
-  // Support Ticket Email text for older existing accounts not yet under partner link
-  const ticketSubject = `Request to link account to Partner Code: ${partnerCode}`;
-  const ticketBody = `Dear Exness Support Team,
-
-I am requesting that my Exness trading account be linked under Partner Link: ${partnerLink} (Partner Code: ${partnerCode} - Candlesticks Academy).
-
-My Account Details:
-• Registered Exness Email: ${exnessEmailInput || "[Your Exness Email]"}
-• Exness Trading Account ID: ${exnessIdInput || "[Your Trading Account Number]"}
-• Partner Link / Code: ${partnerCode}
-
-Please confirm once the account has been linked under Partner Code: ${partnerCode}.
-
-Thank you.`;
-
-  function copyTicketContent() {
-    navigator.clipboard.writeText(`${ticketSubject}\n\n${ticketBody}`);
-    setTicketCopied(true);
-    setTimeout(() => setTicketCopied(false), 2500);
-  }
-
   // Live manual refresh from Exness Partner Link into Supabase SQL
   async function handleRefreshPartnerData() {
     setRefreshingPartnerData(true);
@@ -197,7 +186,9 @@ Thank you.`;
     setTimeout(() => setRefreshFeedback(null), 4000);
   }
 
-  // Handle existing account connection: immediately registers in Supabase and proceeds
+  // Submit Partner Transfer Ticket for existing accounts opened without partner link
+  // Strictly logs ticket and prepares formal email. Does NOT pre-approve in database;
+  // Account gets verified once Exness confirms the link and it appears on the Partner Dashboard!
   async function handleConnectExistingAccount(e: FormEvent) {
     e.preventDefault();
     const cleanAccount = exnessIdInput.trim();
@@ -216,25 +207,18 @@ Thank you.`;
     const res = await connectExistingExnessClient({
       tradingAccountId: cleanAccount,
       email: cleanEmail,
+      fullName: fullName.trim() || undefined,
       country,
+      destinationEmail: destinationEmail.trim() || DEFAULT_EXNESS_SUPPORT_EMAIL,
+      partnerEmail: partnerEmail.trim() || DEFAULT_PARTNER_EMAIL,
     });
     setConnectingExisting(false);
     setConnectFeedback(res);
 
     if (res.success) {
+      setTransferResult(res);
+      // Select the account card so user sees verification section
       setSelectedHasAccount(true);
-      setTimeout(async () => {
-        setVerifying(true);
-        const verifyRes = await verifyExnessPartnerAccount(cleanAccount, config, cleanEmail);
-        setVerifying(false);
-        if (verifyRes.success) {
-          setEmail(cleanEmail);
-          setVerifiedClientId(verifyRes.clientId);
-          setVerifiedClientUid(verifyRes.clientUid);
-          setStep(2);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      }, 600);
     }
   }
 
@@ -805,42 +789,88 @@ Thank you.`;
                   </button>
                 </form>
 
-                {/* Support Ticket & Instant Account Connection Helper */}
+                {/* Support Ticket Helper for existing accounts opened without partner link */}
                 <div className="pt-4 border-t border-white/10">
-                  <p className="text-xs text-[#9aa4b5] flex items-center gap-1.5">
-                    <SlidersHorizontal size={13} className="text-[#ffde02] shrink-0" />
-                    <span>Opened your Exness account previously without our partner link?</span>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowTicketHelper(!showTicketHelper)}
-                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline cursor-pointer pl-5"
-                  >
-                    <span>
-                      {showTicketHelper ? "Hide Partner Transfer & Connection Form" : "Connect Existing Account & Submit Partner Transfer Ticket"}
-                    </span>
-                    <ArrowRight size={13} />
-                  </button>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs text-[#9aa4b5] flex items-center gap-1.5">
+                      <SlidersHorizontal size={13} className="text-[#ffde02] shrink-0" />
+                      <span>Opened your Exness account previously without our partner link?</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowTicketHelper(!showTicketHelper)}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline cursor-pointer"
+                    >
+                      <span>
+                        {showTicketHelper ? "Hide Partner Transfer Form" : "Submit a Partner Transfer Ticket →"}
+                      </span>
+                    </button>
+                  </div>
 
                   {showTicketHelper && (
-                    <div className="mt-4 p-5 rounded-xl bg-[#0c0e13] border border-white/10 space-y-4 text-xs">
-                      {/* Form: Instant Account Connection to Database */}
-                      <form onSubmit={handleConnectExistingAccount} className="p-4 rounded-xl bg-[#141822] border border-[#ffde02]/30 space-y-3">
+                    <div className="mt-4 p-5 rounded-xl bg-[#0c0e13] border border-white/10 space-y-4 text-xs animate-fadeIn">
+                      <div className="border-b border-white/10 pb-3">
+                        <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#ffde02] flex items-center gap-1.5">
+                          <Mail size={14} /> EXNESS PARTNER AFFILIATION TRANSFER REQUEST
+                        </span>
+                        <p className="text-[11.5px] text-[#9aa4b5] mt-1 leading-relaxed">
+                          If you already had an Exness account created without our partner link (<strong className="text-white font-mono">{partnerCode}</strong>), submit your details below to generate and send a formal transfer ticket to Exness. Once Exness confirms the link and your account appears on our Exness Partner Dashboard, you will be verified immediately upon entering your Trading Account ID above.
+                        </p>
+                      </div>
+
+                      {/* Partner Details Summary Box */}
+                      <div className="p-3.5 rounded-xl bg-[#141822] border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                        <div>
+                          <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner Email:</span>
+                          <span className="text-white font-mono font-bold">{partnerEmail}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner Link:</span>
+                          <span className="text-[#ffde02] font-mono font-bold truncate block">{partnerLink}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner ID / Code:</span>
+                          <span className="text-white font-mono font-bold">{partnerCode}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner Account ID:</span>
+                          <span className="text-white font-mono font-bold">{OFFICIAL_PARTNER_ACCOUNT_ID}</span>
+                        </div>
+                      </div>
+
+                      {/* Partner Transfer Request Form */}
+                      <form onSubmit={handleConnectExistingAccount} className="p-4 rounded-xl bg-[#141822] border border-[#ffde02]/30 space-y-3.5">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <CheckCircle2 size={14} className="text-[#ffde02]" /> Connect Existing Exness Account to Database
+                            <CheckCircle2 size={14} className="text-[#ffde02]" /> Generate Partner Transfer Ticket
                           </span>
                           <span className="text-[10px] font-mono text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded self-start sm:self-auto">
-                            Auto-updates Supabase SQL
+                            Strict Verification (No Pre-Approval)
                           </span>
                         </div>
-                        <p className="text-[11px] text-[#9aa4b5] leading-relaxed">
-                          If you already had an Exness account or just submitted a transfer, enter your account details below. We immediately link your account in the Candlesticks Supabase database so you can proceed to create your academy account!
-                        </p>
+
+                        {/* Recipient Exness Support Email (Editable) */}
+                        <div>
+                          <label className="block text-[10.5px] uppercase font-bold text-[#8e97a6] mb-1">
+                            Send Request To (Exness Partner Support Email) <span className="text-[#ffde02]">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={destinationEmail}
+                            onChange={(e) => setDestinationEmail(e.target.value)}
+                            placeholder="partner.support@exness.com"
+                            className="w-full bg-[#0a0c10] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                          />
+                          <p className="text-[10px] text-[#7d8799] mt-1">
+                            Default: <code className="text-[#cfd7e4]">partner.support@exness.com</code>. You may edit this if you have a direct Exness partner desk email.
+                          </p>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[10.5px] uppercase font-bold text-[#8e97a6] mb-1">
-                              Exness Registered Email *
+                              Your Exness Registered Email <span className="text-[#ffde02]">*</span>
                             </label>
                             <input
                               type="email"
@@ -853,77 +883,120 @@ Thank you.`;
                           </div>
                           <div>
                             <label className="block text-[10.5px] uppercase font-bold text-[#8e97a6] mb-1">
-                              Trading Account ID (Account #) *
+                              Your Exness Trading Account ID (Account #) <span className="text-[#ffde02]">*</span>
                             </label>
                             <input
                               type="text"
                               required
                               value={exnessIdInput}
                               onChange={(e) => setExnessIdInput(e.target.value)}
-                              placeholder="e.g. 208473281"
+                              placeholder="e.g. 16544022"
                               className="w-full bg-[#0a0c10] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
                             />
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div className="pt-1">
                           <button
                             type="submit"
                             disabled={connectingExisting}
-                            className="px-4 py-2 rounded-full bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5"
-                          >
-                            {connectingExisting ? (
-                              <>
-                                <RefreshCw size={12} className="animate-spin" /> Connecting &amp; Syncing to Database...
-                              </>
-                            ) : (
-                              <>
-                                <Check size={13} strokeWidth={3} /> Connect Account &amp; Proceed to Academy →
-                              </>
-                            )}
-                          </button>
-                          {connectFeedback && (
-                            <span className="text-[11px] text-[#ffde02] font-semibold flex items-center gap-1">
-                              <CheckCircle2 size={13} /> {connectFeedback.message}
-                            </span>
-                          )}
-                        </div>
-                      </form>
-
-                      {/* Step-by-step Exness Ticket Guide */}
-                      <div className="pt-2">
-                        <p className="text-[#9ea8b8] leading-relaxed">
-                          Also send this formal request to Exness Support from your registered email to link your account under Partner Code{" "}
-                          <strong className="text-[#ffde02] font-mono">{partnerCode}</strong>:
-                        </p>
-                        <div className="mt-2 p-3 rounded-lg bg-black/50 border border-white/5 font-mono text-[11px] text-[#cfd7e4] whitespace-pre-wrap">
-                          <div className="text-white font-bold mb-1">Subject: {ticketSubject}</div>
-                          {ticketBody}
-                        </div>
-                        <div className="flex flex-wrap gap-2.5 mt-3">
-                          <button
-                            type="button"
-                            onClick={copyTicketContent}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-[11px] cursor-pointer"
-                          >
-                            {ticketCopied ? <Check size={13} className="text-[#ffde02]" /> : <Copy size={13} />}
-                            {ticketCopied ? "Copied!" : "Copy Ticket"}
-                          </button>
-                          <a
-                            href={`mailto:${config.supportEmail}?subject=${encodeURIComponent(
-                              ticketSubject
-                            )}&body=${encodeURIComponent(ticketBody)}`}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full font-bold text-[11px]"
+                            className="w-full sm:w-auto px-5 py-2.5 rounded-full font-extrabold text-xs uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(255,222,2,0.15)] disabled:opacity-60"
                             style={{
                               background: "linear-gradient(145deg, #fff06c 0%, #ffde02 48%, #e7c900 100%)",
                               color: "#0b0d0f",
                             }}
                           >
-                            <Mail size={13} color="#0b0d0f" />
-                            <span style={{ color: "#0b0d0f" }}>Open Email App</span>
-                          </a>
+                            {connectingExisting ? (
+                              <>
+                                <RefreshCw size={12} className="animate-spin text-black" />
+                                <span style={{ color: "#0b0d0f" }}>Preparing Transfer Ticket &amp; Email...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Mail size={13} color="#0b0d0f" />
+                                <span style={{ color: "#0b0d0f" }}>Generate &amp; Submit Partner Transfer Ticket</span>
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </div>
+                      </form>
+
+                      {/* Generated Email Draft & Instructions (shown when submitted or available) */}
+                      {transferResult?.emailDetails && (
+                        <div className="p-4 rounded-xl bg-[#141822] border-2 border-[#ffde02]/40 space-y-3.5 animate-fadeIn">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/10">
+                            <span className="text-xs font-bold text-[#ffde02] flex items-center gap-1.5 font-mono">
+                              <CheckCircle2 size={15} /> TICKET #{transferResult.ticketRef} PREPARED
+                            </span>
+                            <span className="text-[10px] font-mono text-[#9aa4b5] bg-white/5 px-2 py-0.5 rounded">
+                              Send from your registered Exness email
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] space-y-1">
+                            <p className="text-white font-semibold">
+                              To: <span className="font-mono text-[#ffde02]">{transferResult.emailDetails.destinationEmail}</span>
+                            </p>
+                            <p className="text-white font-semibold">
+                              Subject: <span className="font-mono text-[#cfd7e4]">{transferResult.emailDetails.subject}</span>
+                            </p>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-black/60 border border-white/10 font-mono text-[10.5px] text-[#cfd7e4] whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
+                            {transferResult.emailDetails.body}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2.5 pt-1">
+                            <a
+                              href={`mailto:${encodeURIComponent(transferResult.emailDetails.destinationEmail)}?subject=${encodeURIComponent(
+                                transferResult.emailDetails.subject
+                              )}&body=${encodeURIComponent(transferResult.emailDetails.body)}`}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-extrabold text-[11px] uppercase tracking-wider cursor-pointer"
+                              style={{
+                                background: "linear-gradient(145deg, #fff06c 0%, #ffde02 48%, #e7c900 100%)",
+                                color: "#0b0d0f",
+                              }}
+                            >
+                              <Mail size={13} color="#0b0d0f" />
+                              <span style={{ color: "#0b0d0f" }}>Open in Email App</span>
+                            </a>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  `To: ${transferResult.emailDetails?.destinationEmail}\nSubject: ${transferResult.emailDetails?.subject}\n\n${transferResult.emailDetails?.body}`
+                                );
+                                setTicketEmailCopied(true);
+                                setTimeout(() => setTicketEmailCopied(false), 2500);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-[11px] cursor-pointer border border-white/10"
+                            >
+                              {ticketEmailCopied ? <Check size={13} className="text-[#ffde02]" /> : <Copy size={13} />}
+                              <span>{ticketEmailCopied ? "Email Copied!" : "Copy Full Email Draft"}</span>
+                            </button>
+                          </div>
+
+                          {/* Next Steps Notification */}
+                          <div className="p-3 rounded-lg bg-[#0e1117] border border-white/10 text-[11px] text-[#9aa4b5] space-y-1.5">
+                            <p className="text-white font-bold flex items-center gap-1">
+                              <ShieldCheck size={13} className="text-[#ffde02]" /> What happens next?
+                            </p>
+                            <p className="leading-relaxed">
+                              1. Send the email above to Exness Support from your registered email address (<code className="text-white">{transferResult.emailDetails.clientEmail}</code>).
+                            </p>
+                            <p className="leading-relaxed">
+                              2. Exness typically completes partner account affiliation within <strong>24 to 48 hours</strong>.
+                            </p>
+                            <p className="leading-relaxed">
+                              3. The moment your account is connected, it will automatically show on our <strong>Partner Dashboard</strong>.
+                            </p>
+                            <p className="leading-relaxed text-[#ffde02]">
+                              4. Once connected, return here and enter your Trading Account ID above to verify your account! (Accounts are verified once officially affiliated by Exness, not pre-approved beforehand).
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
