@@ -27,6 +27,11 @@ import {
   VerificationPage,
 } from "./PlatformPages";
 import { OnboardingFlow } from "./OnboardingFlow";
+import {
+  AdminCoursesPage,
+  AdminLiveSessionsPage,
+  AdminMentorInboxPage,
+} from "./AdminStudioPages";
 
 export const router = createBrowserRouter([
   { path: "/", Component: HomePage },
@@ -53,6 +58,9 @@ export const router = createBrowserRouter([
       { path: "/signals/:signalId", Component: SignalDetailPage },
       { path: "/admin", Component: AdminDashboardPage },
       { path: "/admin/students", Component: StudentRosterPage },
+      { path: "/admin/courses", Component: AdminCoursesPage },
+      { path: "/admin/sessions", Component: AdminLiveSessionsPage },
+      { path: "/admin/messages", Component: AdminMentorInboxPage },
       { path: "/admin/verification", Component: VerificationPage },
       { path: "/admin/signals/new", Component: SignalFormPage },
       { path: "/admin/payments", Component: PaymentsPage },

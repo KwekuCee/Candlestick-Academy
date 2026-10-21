@@ -127,13 +127,31 @@ CREATE TABLE IF NOT EXISTS public.support_tickets (
 CREATE TABLE IF NOT EXISTS public.courses (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  level TEXT NOT NULL CHECK (level IN ('Beginner', 'Intermediate', 'Essential', 'Advanced')),
+  level TEXT NOT NULL DEFAULT 'Beginner',
   lessons_count INTEGER NOT NULL DEFAULT 12,
   color TEXT NOT NULL DEFAULT 'gold',
-  description TEXT NOT NULL,
+  cover_color TEXT NOT NULL DEFAULT 'gold',
+  sort_order INTEGER NOT NULL DEFAULT 1,
+  certificate_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  description TEXT NOT NULL DEFAULT '',
   min_deposit_required NUMERIC(12, 2) NOT NULL DEFAULT 50.00,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.courses DROP CONSTRAINT IF EXISTS courses_level_check;
+
+ALTER TABLE public.courses
+  ADD COLUMN IF NOT EXISTS level TEXT NOT NULL DEFAULT 'Beginner',
+  ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS cover_color TEXT NOT NULL DEFAULT 'gold',
+  ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT 'gold',
+  ADD COLUMN IF NOT EXISTS lessons_count INTEGER NOT NULL DEFAULT 12,
+  ADD COLUMN IF NOT EXISTS min_deposit_required NUMERIC(12, 2) NOT NULL DEFAULT 50.00,
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS certificate_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS public.lessons (
   id TEXT PRIMARY KEY,
@@ -313,6 +331,174 @@ ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_trades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
+-- =============================================================================
+-- 12. CLIENT & ADMIN DASHBOARD FULL UPGRADE SCHEMA (COURSES, AUTO-QUIZZES,
+--     LIVE STREAMING & CHAT, SIGNALS, MY TRADES, MENTOR Q&A & STORAGE BUCKETS)
+-- =============================================================================
+
+ALTER TABLE public.students
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS telegram_handle TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS preferred_session TEXT DEFAULT 'New York',
+  ADD COLUMN IF NOT EXISTS risk_per_trade_pct NUMERIC(5,2) DEFAULT 1.00,
+  ADD COLUMN IF NOT EXISTS account_balance_usd NUMERIC(12,2) DEFAULT 100.00,
+  ADD COLUMN IF NOT EXISTS target_monthly_return_pct NUMERIC(6,2) DEFAULT 10.00,
+  ADD COLUMN IF NOT EXISTS trading_style TEXT DEFAULT 'Intraday Structure',
+  ADD COLUMN IF NOT EXISTS auto_copy_signals BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS notify_signals BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS notify_sessions BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS streak_days INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS best_streak_days INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_active_date DATE;
+
+CREATE TABLE IF NOT EXISTS public.course_lessons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  lesson_number INTEGER NOT NULL DEFAULT 1,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  duration_minutes INTEGER NOT NULL DEFAULT 12,
+  video_url TEXT NOT NULL DEFAULT '',
+  video_source_type TEXT NOT NULL DEFAULT 'url',
+  pair_tag TEXT DEFAULT 'EUR/USD · 15M',
+  key_takeaways JSONB NOT NULL DEFAULT '[]'::jsonb,
+  auto_quiz_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  is_published BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_course_lessons_course_order
+  ON public.course_lessons(course_id, lesson_number ASC);
+
+CREATE TABLE IF NOT EXISTS public.student_lesson_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id TEXT NOT NULL,
+  student_email TEXT NOT NULL,
+  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  lesson_id TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT TRUE,
+  watch_minutes NUMERIC(6,2) NOT NULL DEFAULT 0,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(student_email, lesson_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_lesson_progress_email
+  ON public.student_lesson_progress(student_email);
+
+CREATE TABLE IF NOT EXISTS public.student_quiz_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id TEXT NOT NULL,
+  student_email TEXT NOT NULL,
+  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  lesson_id TEXT,
+  quiz_title TEXT NOT NULL,
+  score_percent NUMERIC(5,2) NOT NULL,
+  correct_answers INTEGER NOT NULL,
+  total_questions INTEGER NOT NULL,
+  passed BOOLEAN NOT NULL DEFAULT FALSE,
+  attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_quiz_attempts_email
+  ON public.student_quiz_attempts(student_email);
+
+ALTER TABLE public.live_sessions
+  ADD COLUMN IF NOT EXISTS slug TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'scheduled',
+  ADD COLUMN IF NOT EXISTS stream_mode TEXT DEFAULT 'screen_share',
+  ADD COLUMN IF NOT EXISTS rtmp_ingest_url TEXT DEFAULT 'rtmp://live.candlesticks.academy/live',
+  ADD COLUMN IF NOT EXISTS rtmp_stream_key TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS stream_playback_url TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS screen_share_snapshot TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS focus_pair TEXT DEFAULT 'EUR/USD · XAU/USD',
+  ADD COLUMN IF NOT EXISTS viewers_count INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS pinned_resources JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS public.live_session_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL,
+  sender_email TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  sender_avatar TEXT DEFAULT '',
+  is_host BOOLEAN NOT NULL DEFAULT FALSE,
+  message TEXT NOT NULL,
+  is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_session_messages_session
+  ON public.live_session_messages(session_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS public.trading_signals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pair TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('BUY', 'SELL')),
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  entry_price TEXT NOT NULL,
+  stop_loss TEXT NOT NULL,
+  take_profit TEXT NOT NULL,
+  risk_reward TEXT NOT NULL DEFAULT '1 : 2.5',
+  timeframe TEXT NOT NULL DEFAULT '15M',
+  thesis TEXT NOT NULL DEFAULT '',
+  mentor_quote TEXT DEFAULT 'Patience is part of the setup. Wait for price to confirm structure.',
+  current_price TEXT DEFAULT '',
+  floating_pnl_text TEXT DEFAULT '',
+  created_by TEXT DEFAULT 'Pastor Mike',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.student_trades
+  ADD COLUMN IF NOT EXISTS student_email TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS trading_account_id TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS lot_size NUMERIC(8,2) DEFAULT 0.10,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Closed',
+  ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'exness_sync',
+  ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS executed_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS public.mentor_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_email TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_avatar TEXT DEFAULT '',
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('student', 'admin')),
+  subject TEXT DEFAULT 'Trading & Mentorship Question',
+  message TEXT NOT NULL,
+  is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.student_certificates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_email TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  course_title TEXT NOT NULL,
+  certificate_code TEXT UNIQUE NOT NULL,
+  quiz_average NUMERIC(5,2) NOT NULL DEFAULT 100.00,
+  approved_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(student_email, course_id)
+);
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('student-avatars', 'student-avatars', true),
+  ('course-videos', 'course-videos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+ALTER TABLE public.course_lessons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_lesson_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_quiz_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.live_session_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trading_signals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_certificates ENABLE ROW LEVEL SECURITY;
+
 DO $$
 DECLARE
   t TEXT;
@@ -320,7 +506,9 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'students', 'exness_verifications', 'exness_partner_clients', 'support_tickets',
     'courses', 'lessons', 'student_progress', 'signals', 'live_sessions',
-    'student_trades', 'payments'
+    'student_trades', 'payments', 'course_lessons', 'student_lesson_progress',
+    'student_quiz_attempts', 'live_session_messages', 'trading_signals',
+    'mentor_messages', 'student_certificates'
   ]
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Allow full access on %I" ON public.%I;', t, t);
@@ -328,3 +516,10 @@ BEGIN
   END LOOP;
 END
 $$;
+
+DROP POLICY IF EXISTS "Public Access Candlesticks Buckets" ON storage.objects;
+CREATE POLICY "Public Access Candlesticks Buckets"
+  ON storage.objects FOR ALL
+  USING (bucket_id IN ('student-avatars', 'course-videos'))
+  WITH CHECK (bucket_id IN ('student-avatars', 'course-videos'));
+

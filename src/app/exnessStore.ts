@@ -28,6 +28,20 @@ export interface ExnessStudent {
     ticketRef: string;
   };
   registrationDate: string;
+  avatarUrl?: string;
+  phone?: string;
+  telegramHandle?: string;
+  preferredSession?: string;
+  riskPerTradePct?: number;
+  accountBalanceUsd?: number;
+  targetMonthlyReturnPct?: number;
+  tradingStyle?: string;
+  autoCopySignals?: boolean;
+  notifySignals?: boolean;
+  notifySessions?: boolean;
+  streakDays?: number;
+  bestStreakDays?: number;
+  lastActiveDate?: string;
 }
 
 export interface ExnessPartnerClientRecord {
@@ -691,6 +705,20 @@ function mapDbRowToStudent(row: Record<string, unknown>): ExnessStudent {
       ? (row.ticket_details as ExnessStudent["ticketDetails"])
       : undefined,
     registrationDate: String(row.registration_date || new Date().toISOString()),
+    avatarUrl: row.avatar_url ? String(row.avatar_url) : undefined,
+    phone: row.phone ? String(row.phone) : undefined,
+    telegramHandle: row.telegram_handle ? String(row.telegram_handle) : undefined,
+    preferredSession: row.preferred_session ? String(row.preferred_session) : "New York",
+    riskPerTradePct: row.risk_per_trade_pct !== undefined ? Number(row.risk_per_trade_pct) : 1.0,
+    accountBalanceUsd: row.account_balance_usd !== undefined ? Number(row.account_balance_usd) : Number(row.deposit_amount || 100),
+    targetMonthlyReturnPct: row.target_monthly_return_pct !== undefined ? Number(row.target_monthly_return_pct) : 10.0,
+    tradingStyle: row.trading_style ? String(row.trading_style) : "Intraday Structure",
+    autoCopySignals: row.auto_copy_signals !== undefined ? Boolean(row.auto_copy_signals) : false,
+    notifySignals: row.notify_signals !== undefined ? Boolean(row.notify_signals) : true,
+    notifySessions: row.notify_sessions !== undefined ? Boolean(row.notify_sessions) : true,
+    streakDays: row.streak_days !== undefined ? Number(row.streak_days) : 0,
+    bestStreakDays: row.best_streak_days !== undefined ? Number(row.best_streak_days) : 0,
+    lastActiveDate: row.last_active_date ? String(row.last_active_date) : undefined,
   };
 }
 
@@ -742,28 +770,68 @@ export async function syncStudentToSupabase(user: ExnessStudent, password?: stri
       });
     }
 
-    await supabase.from("students").upsert(
-      {
-        id: user.id,
-        full_name: user.fullName,
-        country: user.country,
-        email: user.email,
-        has_exness_account: user.hasExnessAccount,
-        exness_id: user.exnessId,
-        exness_email: user.exnessEmail,
-        exness_client_uid: user.exnessClientUid || null,
-        partner_code: OFFICIAL_PARTNER_CODE,
-        partner_linked: user.partnerLinked,
-        partner_linked_at: user.partnerLinkedAt || null,
-        deposit_amount: user.depositAmount,
-        deposit_verified: user.depositVerified,
-        deposit_verified_at: user.depositVerifiedAt || null,
-        ticket_status: user.ticketStatus,
-        ticket_details: user.ticketDetails || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "email" }
-    );
+    const payload: Record<string, unknown> = {
+      id: user.id,
+      full_name: user.fullName,
+      country: user.country,
+      email: user.email,
+      has_exness_account: user.hasExnessAccount,
+      exness_id: user.exnessId,
+      exness_email: user.exnessEmail,
+      exness_client_uid: user.exnessClientUid || null,
+      partner_code: OFFICIAL_PARTNER_CODE,
+      partner_linked: user.partnerLinked,
+      partner_linked_at: user.partnerLinkedAt || null,
+      deposit_amount: user.depositAmount,
+      deposit_verified: user.depositVerified,
+      deposit_verified_at: user.depositVerifiedAt || null,
+      ticket_status: user.ticketStatus,
+      ticket_details: user.ticketDetails || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Include extended profile fields if present
+    if (user.avatarUrl !== undefined) payload.avatar_url = user.avatarUrl;
+    if (user.phone !== undefined) payload.phone = user.phone;
+    if (user.telegramHandle !== undefined) payload.telegram_handle = user.telegramHandle;
+    if (user.preferredSession !== undefined) payload.preferred_session = user.preferredSession;
+    if (user.riskPerTradePct !== undefined) payload.risk_per_trade_pct = user.riskPerTradePct;
+    if (user.accountBalanceUsd !== undefined) payload.account_balance_usd = user.accountBalanceUsd;
+    if (user.targetMonthlyReturnPct !== undefined) payload.target_monthly_return_pct = user.targetMonthlyReturnPct;
+    if (user.tradingStyle !== undefined) payload.trading_style = user.tradingStyle;
+    if (user.autoCopySignals !== undefined) payload.auto_copy_signals = user.autoCopySignals;
+    if (user.notifySignals !== undefined) payload.notify_signals = user.notifySignals;
+    if (user.notifySessions !== undefined) payload.notify_sessions = user.notifySessions;
+    if (user.streakDays !== undefined) payload.streak_days = user.streakDays;
+    if (user.bestStreakDays !== undefined) payload.best_streak_days = user.bestStreakDays;
+    if (user.lastActiveDate !== undefined) payload.last_active_date = user.lastActiveDate;
+
+    const { error } = await supabase.from("students").upsert(payload, { onConflict: "email" });
+    if (error) {
+      // Fallback upsert without extended columns if SQL upgrade hasn't been executed yet
+      await supabase.from("students").upsert(
+        {
+          id: user.id,
+          full_name: user.fullName,
+          country: user.country,
+          email: user.email,
+          has_exness_account: user.hasExnessAccount,
+          exness_id: user.exnessId,
+          exness_email: user.exnessEmail,
+          exness_client_uid: user.exnessClientUid || null,
+          partner_code: OFFICIAL_PARTNER_CODE,
+          partner_linked: user.partnerLinked,
+          partner_linked_at: user.partnerLinkedAt || null,
+          deposit_amount: user.depositAmount,
+          deposit_verified: user.depositVerified,
+          deposit_verified_at: user.depositVerifiedAt || null,
+          ticket_status: user.ticketStatus,
+          ticket_details: user.ticketDetails || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email" }
+      );
+    }
   } catch (err) {
     console.debug("Supabase sync note:", err);
   }

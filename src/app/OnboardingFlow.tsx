@@ -158,9 +158,6 @@ export function OnboardingFlow() {
       if (existing.exnessEmail) {
         setExnessEmailInput(existing.exnessEmail);
       }
-      if (existing.exnessId) {
-        setExnessIdInput(existing.exnessId);
-      }
       if (existing.depositAmount) {
         setCurrentDeposit(existing.depositAmount);
       }
@@ -231,7 +228,7 @@ export function OnboardingFlow() {
     if (!trimmedAccount) {
       setVerificationFeedback({
         success: false,
-        message: "Please enter your Exness Trading Account ID (Trading Account Number, e.g. 16544022).",
+        message: "Please enter your Exness Trading Account ID (Trading Account Number).",
       });
       return;
     }
@@ -675,45 +672,6 @@ export function OnboardingFlow() {
                   </div>
                 </div>
 
-                {/* Quick-Select Real Partner Trading Account IDs from Exness API */}
-                <div className="p-3.5 rounded-xl bg-[#161a23] border border-white/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10.5px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-                      Synced Partner Trading Account IDs (<code className="text-[#ffde02]">exness_partner_clients</code> · Click to test):
-                    </span>
-                    <span className="text-[10px] font-mono text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
-                      Live Auto-Sync Active
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { acct: "16544022", client: "c117236d" },
-                      { acct: "168421982", client: "c117236d" },
-                      { acct: "173174690", client: "c117236d" },
-                      { acct: "171396502", client: "81b02ffb" },
-                      { acct: "171192597", client: "d8e89780" },
-                      { acct: "59864023", client: "eaeae957" },
-                      { acct: "208471945", client: "c117236d" },
-                    ].map((item) => (
-                      <button
-                        key={item.acct}
-                        type="button"
-                        onClick={() => {
-                          setExnessIdInput(item.acct);
-                          setVerificationFeedback(null);
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition cursor-pointer ${
-                          exnessIdInput === item.acct
-                            ? "bg-[#ffde02] text-black border-[#ffde02] font-bold"
-                            : "bg-white/5 text-[#cfd7e4] border-white/10 hover:border-[#ffde02]/50"
-                        }`}
-                      >
-                        #{item.acct} <span className="opacity-70">({item.client})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <form onSubmit={handleVerifyReferral} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -725,7 +683,7 @@ export function OnboardingFlow() {
                         required
                         value={exnessIdInput}
                         onChange={(e) => setExnessIdInput(e.target.value)}
-                        placeholder="e.g. 16544022 or 173174690"
+                        placeholder="Enter your Exness Trading Account ID"
                         className="w-full bg-[#181c24] border border-white/15 rounded-xl px-4 py-3 text-white placeholder-[#5a6475] focus:outline-none focus:border-[#ffde02] text-sm font-mono"
                       />
                     </div>
@@ -819,7 +777,7 @@ export function OnboardingFlow() {
                       </div>
 
                       {/* Partner Details Summary Box */}
-                      <div className="p-3.5 rounded-xl bg-[#141822] border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                      <div className="p-3.5 rounded-xl bg-[#141822] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
                         <div>
                           <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner Email:</span>
                           <span className="text-white font-mono font-bold">{partnerEmail}</span>
@@ -831,10 +789,6 @@ export function OnboardingFlow() {
                         <div>
                           <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner ID / Code:</span>
                           <span className="text-white font-mono font-bold">{partnerCode}</span>
-                        </div>
-                        <div>
-                          <span className="text-[#7d8799] uppercase font-bold text-[10px] block">Partner Account ID:</span>
-                          <span className="text-white font-mono font-bold">{OFFICIAL_PARTNER_ACCOUNT_ID}</span>
                         </div>
                       </div>
 
@@ -890,7 +844,7 @@ export function OnboardingFlow() {
                               required
                               value={exnessIdInput}
                               onChange={(e) => setExnessIdInput(e.target.value)}
-                              placeholder="e.g. 16544022"
+                              placeholder="Enter your Exness Trading Account ID"
                               className="w-full bg-[#0a0c10] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
                             />
                           </div>
