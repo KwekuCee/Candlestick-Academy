@@ -35,7 +35,7 @@ ALTER TABLE public.students
   ADD COLUMN IF NOT EXISTS best_streak_days INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS last_active_date DATE;
 
--- 2. COURSES TABLE (The 4 Signature Tracks — Safe Upgrade for Existing Table)
+-- 2. COURSES TABLE (The 4 Signature Tracks + Level PDFs & Multi-Question Quizzes)
 CREATE TABLE IF NOT EXISTS public.courses (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS public.courses (
   cover_color TEXT NOT NULL DEFAULT 'gold',
   sort_order INTEGER NOT NULL DEFAULT 1,
   certificate_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  level_pdf_url TEXT DEFAULT '',
+  level_pdf_name TEXT DEFAULT '',
+  level_quiz_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -55,10 +58,13 @@ ALTER TABLE public.courses
   ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS cover_color TEXT NOT NULL DEFAULT 'gold',
   ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT 'gold',
-  ADD COLUMN IF NOT EXISTS lessons_count INTEGER NOT NULL DEFAULT 12,
+  ADD COLUMN IF NOT EXISTS lessons_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS min_deposit_required NUMERIC(12,2) NOT NULL DEFAULT 50.00,
   ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS certificate_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS level_pdf_url TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS level_pdf_name TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS level_quiz_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
@@ -76,7 +82,7 @@ ON CONFLICT (id) DO UPDATE SET
   sort_order = EXCLUDED.sort_order,
   updated_at = NOW();
 
--- 3. COURSE LESSONS TABLE (Unlimited Video Lessons + Auto-Generated Quizzes)
+-- 3. COURSE LESSONS TABLE (Admin-Uploaded Video Lessons)
 CREATE TABLE IF NOT EXISTS public.course_lessons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
@@ -144,7 +150,7 @@ CREATE TABLE IF NOT EXISTS public.student_quiz_attempts (
   student_email TEXT NOT NULL,
   course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
   lesson_id TEXT,
-  quiz_title TEXT NOT NULL DEFAULT 'Lesson Quiz',
+  quiz_title TEXT NOT NULL DEFAULT 'Level PDF Assessment',
   score_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
   correct_answers INTEGER NOT NULL DEFAULT 0,
   total_questions INTEGER NOT NULL DEFAULT 1,
@@ -157,7 +163,7 @@ ALTER TABLE public.student_quiz_attempts
   ADD COLUMN IF NOT EXISTS student_email TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS course_id TEXT REFERENCES public.courses(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS lesson_id TEXT,
-  ADD COLUMN IF NOT EXISTS quiz_title TEXT NOT NULL DEFAULT 'Lesson Quiz',
+  ADD COLUMN IF NOT EXISTS quiz_title TEXT NOT NULL DEFAULT 'Level PDF Assessment',
   ADD COLUMN IF NOT EXISTS score_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS correct_answers INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS total_questions INTEGER NOT NULL DEFAULT 1,
@@ -230,7 +236,7 @@ ALTER TABLE public.live_session_messages
 CREATE INDEX IF NOT EXISTS idx_live_session_messages_session
   ON public.live_session_messages(session_id, created_at ASC);
 
--- 8. TRADING SIGNALS TABLE (Admin Signal Publishing -> Student Dashboard & Feed)
+-- 8. TRADING SIGNALS TABLE (Multi-TP [TP1-TP5] + Live Market Price Sync)
 CREATE TABLE IF NOT EXISTS public.trading_signals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   pair TEXT NOT NULL,
@@ -239,6 +245,7 @@ CREATE TABLE IF NOT EXISTS public.trading_signals (
   entry_price TEXT NOT NULL,
   stop_loss TEXT NOT NULL,
   take_profit TEXT NOT NULL,
+  tp_levels JSONB NOT NULL DEFAULT '[]'::jsonb,
   risk_reward TEXT NOT NULL DEFAULT '1 : 2.5',
   timeframe TEXT NOT NULL DEFAULT '15M',
   thesis TEXT NOT NULL DEFAULT '',
@@ -257,6 +264,7 @@ ALTER TABLE public.trading_signals
   ADD COLUMN IF NOT EXISTS entry_price TEXT NOT NULL DEFAULT '0',
   ADD COLUMN IF NOT EXISTS stop_loss TEXT NOT NULL DEFAULT '0',
   ADD COLUMN IF NOT EXISTS take_profit TEXT NOT NULL DEFAULT '0',
+  ADD COLUMN IF NOT EXISTS tp_levels JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS risk_reward TEXT NOT NULL DEFAULT '1 : 2.5',
   ADD COLUMN IF NOT EXISTS timeframe TEXT NOT NULL DEFAULT '15M',
   ADD COLUMN IF NOT EXISTS thesis TEXT NOT NULL DEFAULT '',
@@ -267,16 +275,20 @@ ALTER TABLE public.trading_signals
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- 9. STUDENT TRADES TABLE (My Trades — Paginated 10 Per Page, Real P&L & Filters)
+-- 9. STUDENT TRADES TABLE (My Trades — Custom TP/SL, Lot Size, 10 Per Page)
 CREATE TABLE IF NOT EXISTS public.student_trades (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_email TEXT NOT NULL DEFAULT '',
   trading_account_id TEXT NOT NULL DEFAULT '',
+  signal_id TEXT DEFAULT '',
   pair TEXT NOT NULL,
   direction TEXT NOT NULL DEFAULT 'Buy',
   lot_size NUMERIC(8,2) NOT NULL DEFAULT 0.10,
   open_price TEXT NOT NULL DEFAULT '0',
   close_price TEXT NOT NULL DEFAULT '0',
+  take_profit_price TEXT DEFAULT '',
+  stop_loss_price TEXT DEFAULT '',
+  selected_tp_level INTEGER DEFAULT 1,
   pnl_usd NUMERIC(12,2) NOT NULL DEFAULT 0.00,
   return_pct NUMERIC(7,2) NOT NULL DEFAULT 0.00,
   status TEXT NOT NULL DEFAULT 'Closed',
@@ -290,9 +302,13 @@ ALTER TABLE public.student_trades DROP CONSTRAINT IF EXISTS student_trades_direc
 ALTER TABLE public.student_trades
   ADD COLUMN IF NOT EXISTS student_email TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS trading_account_id TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS signal_id TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS lot_size NUMERIC(8,2) NOT NULL DEFAULT 0.10,
   ADD COLUMN IF NOT EXISTS open_price TEXT NOT NULL DEFAULT '0',
   ADD COLUMN IF NOT EXISTS close_price TEXT NOT NULL DEFAULT '0',
+  ADD COLUMN IF NOT EXISTS take_profit_price TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS stop_loss_price TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS selected_tp_level INTEGER DEFAULT 1,
   ADD COLUMN IF NOT EXISTS pnl_usd NUMERIC(12,2) NOT NULL DEFAULT 0.00,
   ADD COLUMN IF NOT EXISTS return_pct NUMERIC(7,2) NOT NULL DEFAULT 0.00,
   ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Closed',
@@ -300,7 +316,22 @@ ALTER TABLE public.student_trades
   ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- 10. DIRECT MENTOR Q&A / SUPPORT MESSAGES TABLE
+-- 10. CLIENT NOTIFICATIONS & AUDIT ALERTS TABLE (Linked to Topbar Alert Bell)
+CREATE TABLE IF NOT EXISTS public.client_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_email TEXT NOT NULL DEFAULT 'ALL',
+  category TEXT NOT NULL DEFAULT 'TRADE',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  link_url TEXT DEFAULT '/signals',
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_notifications_email
+  ON public.client_notifications(student_email, created_at DESC);
+
+-- 11. DIRECT MENTOR Q&A / SUPPORT MESSAGES TABLE
 CREATE TABLE IF NOT EXISTS public.mentor_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_email TEXT NOT NULL,
@@ -313,17 +344,7 @@ CREATE TABLE IF NOT EXISTS public.mentor_messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE public.mentor_messages
-  ADD COLUMN IF NOT EXISTS student_email TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS student_name TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS student_avatar TEXT DEFAULT '',
-  ADD COLUMN IF NOT EXISTS sender_role TEXT NOT NULL DEFAULT 'student',
-  ADD COLUMN IF NOT EXISTS subject TEXT DEFAULT 'Trading & Mentorship Question',
-  ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-
--- 11. STUDENT COURSE CERTIFICATES TABLE
+-- 12. STUDENT COURSE CERTIFICATES & CERTIFICATE TEMPLATES TABLES
 CREATE TABLE IF NOT EXISTS public.student_certificates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_email TEXT NOT NULL,
@@ -337,21 +358,26 @@ CREATE TABLE IF NOT EXISTS public.student_certificates (
   UNIQUE(student_email, course_id)
 );
 
-ALTER TABLE public.student_certificates
-  ADD COLUMN IF NOT EXISTS student_email TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS student_name TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS course_id TEXT REFERENCES public.courses(id) ON DELETE CASCADE,
-  ADD COLUMN IF NOT EXISTS course_title TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS certificate_code TEXT,
-  ADD COLUMN IF NOT EXISTS quiz_average NUMERIC(5,2) NOT NULL DEFAULT 100.00,
-  ADD COLUMN IF NOT EXISTS approved_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
-  ADD COLUMN IF NOT EXISTS issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE TABLE IF NOT EXISTS public.certificate_templates (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  template_image_url TEXT NOT NULL DEFAULT '',
+  name_x_pct NUMERIC(5,2) NOT NULL DEFAULT 50.00,
+  name_y_pct NUMERIC(5,2) NOT NULL DEFAULT 48.00,
+  font_size INTEGER NOT NULL DEFAULT 42,
+  font_color TEXT NOT NULL DEFAULT '#FFDE02',
+  show_course_title BOOLEAN NOT NULL DEFAULT TRUE,
+  course_y_pct NUMERIC(5,2) NOT NULL DEFAULT 60.00,
+  show_issue_date BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- 12. SUPABASE STORAGE BUCKETS FOR PROFILE AVATARS & COURSE VIDEOS
+-- 13. SUPABASE STORAGE BUCKETS FOR AVATARS, VIDEOS, LEVEL PDFS & CERTIFICATES
 INSERT INTO storage.buckets (id, name, public)
 VALUES
   ('student-avatars', 'student-avatars', true),
-  ('course-videos', 'course-videos', true)
+  ('course-videos', 'course-videos', true),
+  ('course-pdfs', 'course-pdfs', true),
+  ('certificate-templates', 'certificate-templates', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
@@ -362,8 +388,10 @@ ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.live_session_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trading_signals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_trades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mentor_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.certificate_templates ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
@@ -372,7 +400,8 @@ BEGIN
   FOREACH tbl IN ARRAY ARRAY[
     'courses', 'course_lessons', 'student_lesson_progress',
     'student_quiz_attempts', 'live_sessions', 'live_session_messages',
-    'trading_signals', 'student_trades', 'mentor_messages', 'student_certificates'
+    'trading_signals', 'student_trades', 'client_notifications',
+    'mentor_messages', 'student_certificates', 'certificate_templates'
   ]
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Allow full access on %I" ON public.%I;', tbl, tbl);
@@ -383,8 +412,8 @@ END $$;
 DROP POLICY IF EXISTS "Public Access Candlesticks Buckets" ON storage.objects;
 CREATE POLICY "Public Access Candlesticks Buckets"
   ON storage.objects FOR ALL
-  USING (bucket_id IN ('student-avatars', 'course-videos'))
-  WITH CHECK (bucket_id IN ('student-avatars', 'course-videos'));
+  USING (bucket_id IN ('student-avatars', 'course-videos', 'course-pdfs', 'certificate-templates'))
+  WITH CHECK (bucket_id IN ('student-avatars', 'course-videos', 'course-pdfs', 'certificate-templates'));
 `;
 
 export const DASHBOARD_UPGRADE_SQL = CLIENT_DASHBOARD_UPGRADE_SQL;
@@ -429,6 +458,9 @@ export interface CourseTrackItem {
   color: string;
   sortOrder: number;
   certificateEnabled: boolean;
+  levelPdfUrl?: string;
+  levelPdfName?: string;
+  levelQuizQuestions?: QuizQuestionItem[];
   lessons: CourseLessonItem[];
 }
 
@@ -476,6 +508,19 @@ export interface StudentCertificateItem {
   issuedAt: string;
 }
 
+export interface CertificateTemplateConfig {
+  id: string;
+  templateImageUrl: string;
+  nameXPct: number;
+  nameYPct: number;
+  fontSize: number;
+  fontColor: string;
+  showCourseTitle: boolean;
+  courseYPct: number;
+  showIssueDate: boolean;
+  updatedAt: string;
+}
+
 export interface LiveSessionResource {
   title: string;
   type: "worksheet" | "chart" | "checklist";
@@ -512,14 +557,37 @@ export interface LiveChatMessageItem {
   createdAt: string;
 }
 
+export interface SignalTpLevel {
+  level: number; // 1 to 5
+  label: string; // "TP1".."TP5"
+  price: string;
+  hit: boolean;
+  hitAt?: string;
+}
+
+export type SignalStatusType =
+  | "ACTIVE"
+  | "TP1 HIT"
+  | "TP2 HIT"
+  | "TP3 HIT"
+  | "TP4 HIT"
+  | "TP5 HIT"
+  | "PARTIAL TP"
+  | "ALL TPS HIT"
+  | "ALL TP HIT"
+  | "HIT TP"
+  | "HIT SL"
+  | "CLOSED";
+
 export interface TradingSignalItem {
   id: string;
   pair: string;
   direction: "BUY" | "SELL";
-  status: "ACTIVE" | "HIT TP" | "HIT SL" | "CLOSED";
+  status: SignalStatusType;
   entryPrice: string;
   stopLoss: string;
   takeProfit: string;
+  tpLevels: SignalTpLevel[];
   riskReward: string;
   entry: string;
   sl: string;
@@ -530,6 +598,7 @@ export interface TradingSignalItem {
   commentary: string;
   mentorQuote: string;
   currentPrice?: string;
+  lastMarketPrice?: number;
   floatingPnlText?: string;
   createdBy: string;
   author: string;
@@ -541,18 +610,36 @@ export interface StudentTradeItem {
   studentEmail: string;
   tradingAccountId: string;
   exnessAccountId: string;
+  signalId?: string;
   pair: string;
   direction: "BUY" | "SELL";
   lotSize: number;
   lots: number;
   openPrice: string;
   closePrice: string;
+  takeProfitPrice?: string;
+  stopLossPrice?: string;
+  customTp?: string;
+  customSl?: string;
+  tpLevelSelected?: string;
+  selectedTpLevel?: number;
   pnlUsd: number;
   returnPct: number;
-  status: "WIN" | "LOSS" | "OPEN";
+  status: "WIN" | "LOSS" | "OPEN" | "PARTIAL TP";
   source: "EXNESS_SYNC" | "SIGNAL_COPY" | "MANUAL";
   notes?: string;
   executedAt: string;
+}
+
+export interface ClientNotificationItem {
+  id: string;
+  studentEmail: string; // specific student email or "ALL"
+  category: "TRADE" | "SIGNAL_TP" | "ACCOUNT" | "CERTIFICATE" | "SYSTEM";
+  title: string;
+  message: string;
+  linkUrl: string;
+  isRead: boolean;
+  createdAt: string;
 }
 
 export interface MentorMessageItem {
@@ -579,7 +666,7 @@ export interface EconomicCalendarEvent {
 }
 
 // ============================================================================
-// 3. AUTO-QUIZ GENERATOR ENGINE (BASED ON UPLOADED COURSE & LESSON CONTENT)
+// 3. AUTO-QUIZ GENERATOR ENGINE (MULTI-QUESTION PER LEVEL / LESSON)
 // ============================================================================
 
 export function generateAutoQuizQuestions(
@@ -614,7 +701,7 @@ export function generateAutoQuizQuestions(
     },
     {
       id: `${courseId}-q2-${Date.now() + 1}`,
-      question: `According to the lesson "${cleanTitle}", how should a trader confirm a valid setup?`,
+      question: `According to "${cleanTitle}", how should a trader confirm a valid setup?`,
       options: [
         "Chase impulse candles mid-move before the candle closes",
         takeaways[1] || "Wait for clean candle closure and displacement at a key level",
@@ -638,7 +725,6 @@ export function generateAutoQuizQuestions(
     },
   ];
 
-  // Add track-specific domain questions
   if (courseId === "forex-foundations") {
     generated.push(
       {
@@ -651,12 +737,14 @@ export function generateAutoQuizQuestions(
           "Sunday market open rollover",
         ],
         correctIndex: 1,
+        explanation: "London & New York overlap accounts for the highest institutional volume.",
       },
       {
         id: `${courseId}-q5`,
         question: "If your account balance is $100 and you risk 1% with a 10-pip stop-loss on EUR/USD, what is your maximum dollar risk?",
         options: ["$10.00", "$1.00", "$5.00", "$0.10"],
         correctIndex: 1,
+        explanation: "1% of $100 is $1.00 maximum risk.",
       }
     );
   } else if (courseId === "technical-analysis") {
@@ -671,6 +759,7 @@ export function generateAutoQuizQuestions(
           "A 1-minute doji inside a 4-hour consolidation",
         ],
         correctIndex: 1,
+        explanation: "Institutional BOS requires a full candle body closure beyond the structural high.",
       },
       {
         id: `${courseId}-q5`,
@@ -682,6 +771,7 @@ export function generateAutoQuizQuestions(
           "Indicators automatically turn off at those levels",
         ],
         correctIndex: 0,
+        explanation: "Equal highs/lows hold resting buy-stops and sell-stops targeted during liquidity sweeps.",
       }
     );
   } else if (courseId === "risk-psychology") {
@@ -696,12 +786,14 @@ export function generateAutoQuizQuestions(
           "Copy random setups outside your trading plan",
         ],
         correctIndex: 1,
+        explanation: "Stepping away after hitting your daily loss circuit breaker prevents revenge trading.",
       },
       {
         id: `${courseId}-q5`,
         question: "With a 1 : 2.5 Risk-to-Reward ratio, what minimum win rate is needed to remain profitable over 20 trades?",
         options: ["90% win rate", "At least 30%–35% win rate", "75% win rate", "100% win rate"],
         correctIndex: 1,
+        explanation: "At 1:2.5 R:R, winning just 30%–35% of setups yields positive net expectancy.",
       }
     );
   } else {
@@ -716,6 +808,7 @@ export function generateAutoQuizQuestions(
           "Trading directly into high-impact NFP release 10 seconds before announcement",
         ],
         correctIndex: 1,
+        explanation: "Displacement leaves a clear Fair Value Gap and confirms institutional sponsorship.",
       },
       {
         id: `${courseId}-q5`,
@@ -727,6 +820,7 @@ export function generateAutoQuizQuestions(
           "Ignore structure and trade counter-trend without confirmation",
         ],
         correctIndex: 0,
+        explanation: "A sweep of sell-side liquidity followed by a bullish MSS targets buy-side liquidity.",
       }
     );
   }
@@ -735,7 +829,7 @@ export function generateAutoQuizQuestions(
 }
 
 // ============================================================================
-// 4. DEFAULT SEED COURSES & LESSONS (SYNCS WITH SUPABASE)
+// 4. 4 SIGNATURE COURSE TRACKS (ZERO DEMO LESSONS — ADMIN UPLOADS ONLY)
 // ============================================================================
 
 const DEFAULT_COURSE_TRACKS: CourseTrackItem[] = [
@@ -750,44 +844,10 @@ const DEFAULT_COURSE_TRACKS: CourseTrackItem[] = [
     color: "gold",
     sortOrder: 1,
     certificateEnabled: true,
-    lessons: [
-      "Welcome to the Forex Market",
-      "Currency Pairs & Base/Quote Mechanics",
-      "Pips, Lots, Margin & Leverage",
-      "How Institutional Brokers & Liquidity Work",
-      "London, New York & Asian Trading Sessions",
-      "Reading Candlestick Anatomy & Momentum",
-      "Reading Market Structure (HH, HL, LH, LL)",
-      "Institutional Support & Demand Zones",
-      "Building a Complete Trade Idea",
-      "Creating Your Written Trading Plan",
-      "Exness MT4/MT5 Terminal Execution Walkthrough",
-      "Foundations Final Mastery Review",
-    ].map((title, idx) => ({
-      id: `ff-lesson-${idx + 1}`,
-      courseId: "forex-foundations",
-      courseSlug: "forex-foundations",
-      lessonNumber: idx + 1,
-      title,
-      description: `Step-by-step video breakdown of ${title} with live EUR/USD and XAU/USD chart examples.`,
-      summary: `Step-by-step video breakdown of ${title} with live EUR/USD and XAU/USD chart examples.`,
-      durationMinutes: 10 + idx * 2,
-      videoUrl: "",
-      videoSourceType: "url",
-      pairTag: idx % 2 === 0 ? "EUR/USD · 15M" : "XAU/USD · 1H",
-      keyTakeaways: [
-        `Understand the core mechanics of ${title}`,
-        "Apply structure and session timing before placing any order",
-        "Calculate position size based on stop-loss distance in pips",
-      ],
-      autoQuizQuestions: generateAutoQuizQuestions("forex-foundations", title, `Core concepts of ${title}`, [
-        `Master the fundamentals of ${title} before risking live capital`,
-        "Confirm session liquidity and spread stability prior to execution",
-        "Maintain strict 1% to 2% risk per trade setup",
-      ]),
-      isPublished: true,
-      createdAt: "2026-10-01T10:00:00Z",
-    })),
+    levelPdfUrl: "",
+    levelPdfName: "",
+    levelQuizQuestions: [],
+    lessons: [],
   },
   {
     id: "technical-analysis",
@@ -800,40 +860,10 @@ const DEFAULT_COURSE_TRACKS: CourseTrackItem[] = [
     color: "blue",
     sortOrder: 2,
     certificateEnabled: true,
-    lessons: [
-      "Multi-Timeframe Top-Down Alignment (D1, 4H, 15M)",
-      "Break of Structure (BOS) vs Change of Character (CHoCH)",
-      "Mapping Buy-Side & Sell-Side Liquidity Pools",
-      "High-Probability Order Blocks & Supply/Demand",
-      "Fair Value Gaps (FVG) & Market Imbalances",
-      "Session High/Low Sweeps (London & NY Raids)",
-      "Trendlines vs Horizontal Institutional Levels",
-      "Fibonacci Premium & Discount Pricing Arrays",
-      "Candlestick Confirmation Models at Key Zones",
-      "Avoiding Low-Probability Inducement Traps",
-      "Setting Precision Stop-Loss & Take-Profit Targets",
-      "Live Chart Walkthrough: GBP/USD & Gold",
-    ].map((title, idx) => ({
-      id: `ta-lesson-${idx + 1}`,
-      courseId: "technical-analysis",
-      courseSlug: "technical-analysis",
-      lessonNumber: idx + 1,
-      title,
-      description: `Practical technical mastery covering ${title} on live forex and gold charts.`,
-      summary: `Practical technical mastery covering ${title} on live forex and gold charts.`,
-      durationMinutes: 14 + idx * 2,
-      videoUrl: "",
-      videoSourceType: "url",
-      pairTag: idx % 2 === 0 ? "GBP/USD · 4H/15M" : "XAU/USD · 15M",
-      keyTakeaways: [
-        `Identify ${title} on 4H and 15M charts`,
-        "Wait for liquidity sweep + displacement confirmation",
-        "Target opposing range liquidity for minimum 1:2.5 R:R",
-      ],
-      autoQuizQuestions: generateAutoQuizQuestions("technical-analysis", title, `Technical execution of ${title}`, []),
-      isPublished: true,
-      createdAt: "2026-10-02T10:00:00Z",
-    })),
+    levelPdfUrl: "",
+    levelPdfName: "",
+    levelQuizQuestions: [],
+    lessons: [],
   },
   {
     id: "risk-psychology",
@@ -846,40 +876,10 @@ const DEFAULT_COURSE_TRACKS: CourseTrackItem[] = [
     color: "violet",
     sortOrder: 3,
     certificateEnabled: true,
-    lessons: [
-      "The Mathematics of Drawdown & Capital Preservation",
-      "Position Sizing Formula for Forex & Gold",
-      "Why 1:2.5 Risk-to-Reward Beats High Win-Rate Guessing",
-      "Eliminating FOMO & Revenge Trading Forever",
-      "Daily Loss Limits & Circuit Breaker Rules",
-      "Handling Winning Streaks Without Over-Leveraging",
-      "Pre-Session Routine & Checklist Discipline",
-      "Journaling Every Trade Like an Institutional Desk",
-      "Trading Around High-Impact CPI, NFP & FOMC Releases",
-      "Scaling From a $50 Account to Consistent Growth",
-      "Patience: Knowing When NOT to Trade",
-      "Risk & Mindset Mastery Assessment",
-    ].map((title, idx) => ({
-      id: `rp-lesson-${idx + 1}`,
-      courseId: "risk-psychology",
-      courseSlug: "risk-psychology",
-      lessonNumber: idx + 1,
-      title,
-      description: `Essential risk control and mindset training: ${title}.`,
-      summary: `Essential risk control and mindset training: ${title}.`,
-      durationMinutes: 12 + idx,
-      videoUrl: "",
-      videoSourceType: "url",
-      pairTag: "RISK & MINDSET",
-      keyTakeaways: [
-        `Enforce strict discipline through ${title}`,
-        "Never exceed your pre-defined daily loss limit",
-        "Grade every trade by rule adherence, not just dollar outcome",
-      ],
-      autoQuizQuestions: generateAutoQuizQuestions("risk-psychology", title, `Risk management rule: ${title}`, []),
-      isPublished: true,
-      createdAt: "2026-10-03T10:00:00Z",
-    })),
+    levelPdfUrl: "",
+    levelPdfName: "",
+    levelQuizQuestions: [],
+    lessons: [],
   },
   {
     id: "price-action",
@@ -892,60 +892,265 @@ const DEFAULT_COURSE_TRACKS: CourseTrackItem[] = [
     color: "green",
     sortOrder: 4,
     certificateEnabled: true,
-    lessons: [
-      "Institutional Order Flow & Interbank Delivery",
-      "Asian Range Accumulation & London Manipulation",
-      "New York Reversal vs Continuation Signatures",
-      "XAU/USD (Gold) Volatility & Liquidity Raid Model",
-      "Refining 4H Zones Down to 5M / 15M Entries",
-      "Mitigation Blocks vs Breaker Blocks",
-      "Managing Open Trades: Breakeven & Partial Profits",
-      "Correlated Pair Divergence (DXY, EUR/USD, GBP/USD)",
-      "Weekly Profile Templates (Classic Tuesday/Wednesday Low)",
-      "High-Conviction Setup Grading Rubric (A+ Setups Only)",
-      "Live Execution Case Studies with Pastor Mike",
-      "Advanced Price Action Final Certification Review",
-    ].map((title, idx) => ({
-      id: `pa-lesson-${idx + 1}`,
-      courseId: "price-action",
-      courseSlug: "price-action",
-      lessonNumber: idx + 1,
-      title,
-      description: `Advanced institutional price action execution: ${title}.`,
-      summary: `Advanced institutional price action execution: ${title}.`,
-      durationMinutes: 16 + idx * 2,
-      videoUrl: "",
-      videoSourceType: "url",
-      pairTag: "XAU/USD · EUR/USD",
-      keyTakeaways: [
-        `Execute ${title} with institutional precision`,
-        "Align DXY correlation with EUR/USD and XAU/USD setups",
-        "Scale partial profits at internal structure highs/lows",
-      ],
-      autoQuizQuestions: generateAutoQuizQuestions("price-action", title, `Advanced price action: ${title}`, []),
-      isPublished: true,
-      createdAt: "2026-10-04T10:00:00Z",
-    })),
+    levelPdfUrl: "",
+    levelPdfName: "",
+    levelQuizQuestions: [],
+    lessons: [],
   },
 ];
 
-// LocalStorage fallback keys
-const LS_COURSES_KEY = "candlesticks_courses_tracks_v2";
-const LS_PROGRESS_KEY = "candlesticks_student_lesson_progress_v2";
-const LS_QUIZ_ATTEMPTS_KEY = "candlesticks_student_quiz_attempts_v2";
-const LS_CERTIFICATES_KEY = "candlesticks_student_certificates_v2";
-const LS_LIVE_SESSIONS_KEY = "candlesticks_live_sessions_v2";
-const LS_LIVE_CHAT_KEY = "candlesticks_live_chat_messages_v2";
-const LS_SIGNALS_KEY = "candlesticks_trading_signals_v2";
-const LS_TRADES_KEY = "candlesticks_student_trades_v2";
-const LS_MENTOR_MESSAGES_KEY = "candlesticks_mentor_messages_v2";
+// LocalStorage keys (v3 cleans out any legacy demo items)
+const LS_COURSES_KEY = "candlesticks_courses_tracks_v3";
+const LS_PROGRESS_KEY = "candlesticks_student_lesson_progress_v3";
+const LS_QUIZ_ATTEMPTS_KEY = "candlesticks_student_quiz_attempts_v3";
+const LS_CERTIFICATES_KEY = "candlesticks_student_certificates_v3";
+const LS_CERT_TEMPLATE_KEY = "candlesticks_certificate_template_v3";
+const LS_LIVE_SESSIONS_KEY = "candlesticks_live_sessions_v3";
+const LS_LIVE_CHAT_KEY = "candlesticks_live_chat_messages_v3";
+const LS_SIGNALS_KEY = "candlesticks_trading_signals_v3";
+const LS_TRADES_KEY = "candlesticks_student_trades_v3";
+const LS_NOTIFICATIONS_KEY = "candlesticks_client_notifications_v3";
+const LS_MENTOR_MESSAGES_KEY = "candlesticks_mentor_messages_v3";
 
 function emitPortalUpdate() {
   window.dispatchEvent(new Event("candlesticks_portal_data_updated"));
 }
 
 // ============================================================================
-// 5. COURSES & UNLIMITED VIDEO LESSON MANAGEMENT
+// 5. CLIENT ALERT BELL & AUDIT NOTIFICATIONS ENGINE (READ / MARK ALL READ)
+// ============================================================================
+
+export function getCachedClientNotifications(studentEmail: string): ClientNotificationItem[] {
+  const cleanEmail = (studentEmail || "").trim().toLowerCase();
+  const readBroadcastIdsKey = `candlesticks_read_broadcasts_${cleanEmail}`;
+  let readBroadcastIds = new Set<string>();
+  try {
+    const rawRead = localStorage.getItem(readBroadcastIdsKey);
+    if (rawRead) readBroadcastIds = new Set(JSON.parse(rawRead));
+  } catch {
+    // ignore
+  }
+
+  try {
+    const raw = localStorage.getItem(LS_NOTIFICATIONS_KEY);
+    if (raw) {
+      const list = JSON.parse(raw) as ClientNotificationItem[];
+      return list
+        .filter((n) => {
+          const target = (n.studentEmail || "").toLowerCase();
+          return target === "all" || (cleanEmail && target === cleanEmail);
+        })
+        .map((n) => ({
+          ...n,
+          isRead: n.isRead || readBroadcastIds.has(n.id),
+        }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function fetchClientNotificationsFromDb(
+  studentEmail: string
+): Promise<ClientNotificationItem[]> {
+  const cleanEmail = (studentEmail || "").trim().toLowerCase();
+  const local = getCachedClientNotifications(cleanEmail);
+
+  if (!isSupabaseConfigured || !supabase || !cleanEmail) {
+    return local;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("client_notifications")
+      .select("*")
+      .or(`student_email.ilike.${cleanEmail},student_email.eq.ALL`)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      const readBroadcastIdsKey = `candlesticks_read_broadcasts_${cleanEmail}`;
+      let readBroadcastIds = new Set<string>();
+      try {
+        const rawRead = localStorage.getItem(readBroadcastIdsKey);
+        if (rawRead) readBroadcastIds = new Set(JSON.parse(rawRead));
+      } catch {
+        // ignore
+      }
+
+      const mapped: ClientNotificationItem[] = data.map((r: any) => ({
+        id: String(r.id),
+        studentEmail: String(r.student_email || "ALL"),
+        category: (r.category || "TRADE") as ClientNotificationItem["category"],
+        title: String(r.title || "Account Alert"),
+        message: String(r.message || ""),
+        linkUrl: String(r.link_url || "/overview"),
+        isRead: Boolean(r.is_read) || readBroadcastIds.has(String(r.id)),
+        createdAt: String(r.created_at || new Date().toISOString()),
+      }));
+
+      // Merge with local notifications
+      const byId = new Map<string, ClientNotificationItem>();
+      local.forEach((item) => byId.set(item.id, item));
+      mapped.forEach((item) => byId.set(item.id, item));
+      const merged = Array.from(byId.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      return merged;
+    }
+  } catch {
+    // ignore
+  }
+
+  return local;
+}
+
+export async function createClientNotificationInDb(params: {
+  studentEmail: string; // student email or "ALL"
+  category: ClientNotificationItem["category"];
+  title: string;
+  message: string;
+  linkUrl?: string;
+}): Promise<ClientNotificationItem> {
+  const item: ClientNotificationItem = {
+    id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    studentEmail: params.studentEmail.trim() || "ALL",
+    category: params.category,
+    title: params.title.trim(),
+    message: params.message.trim(),
+    linkUrl: params.linkUrl || "/overview",
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem(LS_NOTIFICATIONS_KEY);
+    const list: ClientNotificationItem[] = raw ? JSON.parse(raw) : [];
+    list.unshift(item);
+    localStorage.setItem(LS_NOTIFICATIONS_KEY, JSON.stringify(list.slice(0, 200)));
+  } catch {
+    // ignore
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await Promise.allSettled([
+        supabase.from("client_notifications").insert({
+          student_email: item.studentEmail,
+          category: item.category,
+          title: item.title,
+          message: item.message,
+          link_url: item.linkUrl,
+          is_read: false,
+          created_at: item.createdAt,
+        }),
+        supabase.from("audit_logs").insert({
+          event_type: item.category,
+          actor: item.studentEmail === "ALL" ? "Admin / System" : item.studentEmail,
+          detail: `${item.title}: ${item.message}`,
+          created_at: item.createdAt,
+        }),
+      ]);
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+  return item;
+}
+
+export async function markNotificationReadInDb(
+  notificationId: string,
+  studentEmail: string
+): Promise<void> {
+  const cleanEmail = (studentEmail || "").trim().toLowerCase();
+  const readBroadcastIdsKey = `candlesticks_read_broadcasts_${cleanEmail}`;
+  try {
+    const rawRead = localStorage.getItem(readBroadcastIdsKey);
+    const arr: string[] = rawRead ? JSON.parse(rawRead) : [];
+    if (!arr.includes(notificationId)) {
+      arr.push(notificationId);
+      localStorage.setItem(readBroadcastIdsKey, JSON.stringify(arr));
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const raw = localStorage.getItem(LS_NOTIFICATIONS_KEY);
+    if (raw) {
+      const list = (JSON.parse(raw) as ClientNotificationItem[]).map((n) =>
+        n.id === notificationId ? { ...n, isRead: true } : n
+      );
+      localStorage.setItem(LS_NOTIFICATIONS_KEY, JSON.stringify(list));
+    }
+  } catch {
+    // ignore
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("client_notifications")
+        .update({ is_read: true })
+        .eq("id", notificationId);
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+}
+
+export async function markAllNotificationsReadInDb(studentEmail: string): Promise<void> {
+  const cleanEmail = (studentEmail || "").trim().toLowerCase();
+  const current = getCachedClientNotifications(cleanEmail);
+  const readBroadcastIdsKey = `candlesticks_read_broadcasts_${cleanEmail}`;
+
+  try {
+    const rawRead = localStorage.getItem(readBroadcastIdsKey);
+    const set = new Set<string>(rawRead ? JSON.parse(rawRead) : []);
+    current.forEach((n) => set.add(n.id));
+    localStorage.setItem(readBroadcastIdsKey, JSON.stringify(Array.from(set)));
+  } catch {
+    // ignore
+  }
+
+  try {
+    const raw = localStorage.getItem(LS_NOTIFICATIONS_KEY);
+    if (raw) {
+      const list = (JSON.parse(raw) as ClientNotificationItem[]).map((n) => {
+        const target = (n.studentEmail || "").toLowerCase();
+        if (target === "all" || target === cleanEmail) {
+          return { ...n, isRead: true };
+        }
+        return n;
+      });
+      localStorage.setItem(LS_NOTIFICATIONS_KEY, JSON.stringify(list));
+    }
+  } catch {
+    // ignore
+  }
+
+  if (isSupabaseConfigured && supabase && cleanEmail) {
+    try {
+      await supabase
+        .from("client_notifications")
+        .update({ is_read: true })
+        .ilike("student_email", cleanEmail);
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+}
+
+// ============================================================================
+// 6. COURSES, LEVEL PDF QUIZ GENERATOR & ADMIN VIDEO LESSON MANAGEMENT
 // ============================================================================
 
 export function getCachedCourses(): CourseTrackItem[] {
@@ -953,7 +1158,20 @@ export function getCachedCourses(): CourseTrackItem[] {
     const raw = localStorage.getItem(LS_COURSES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as CourseTrackItem[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return DEFAULT_COURSE_TRACKS.map((def) => {
+          const match = parsed.find((p) => p.id === def.id || p.slug === def.slug);
+          if (!match) return def;
+          return {
+            ...def,
+            ...match,
+            lessons: Array.isArray(match.lessons) ? match.lessons : [],
+            levelQuizQuestions: Array.isArray(match.levelQuizQuestions)
+              ? match.levelQuizQuestions
+              : [],
+          };
+        });
+      }
     }
   } catch {
     // ignore
@@ -970,55 +1188,72 @@ export async function fetchCoursesWithLessons(): Promise<CourseTrackItem[]> {
 
   try {
     const [coursesRes, lessonsRes] = await Promise.all([
-      supabase.from("courses").select("*").order(" created_at", { ascending: true }),
+      supabase.from("courses").select("*").order("sort_order", { ascending: true }),
       supabase.from("course_lessons").select("*").order("lesson_number", { ascending: true }),
     ]);
 
-    if (Array.isArray(lessonsRes.data) && lessonsRes.data.length > 0) {
-      const dbLessons: CourseLessonItem[] = lessonsRes.data.map((r: any) => ({
-        id: String(r.id),
-        courseId: String(r.course_id),
-        courseSlug: String(r.course_id),
-        lessonNumber: Number(r.lesson_number || 1),
-        title: String(r.title || "Lesson"),
-        description: String(r.description || ""),
-        summary: String(r.description || ""),
-        durationMinutes: Number(r.duration_minutes || 12),
-        videoUrl: String(r.video_url || ""),
-        videoSourceType: r.video_source_type === "supabase_storage" ? "supabase_storage" : "url",
-        pairTag: String(r.pair_tag || "EUR/USD · 15M"),
-        keyTakeaways: Array.isArray(r.key_takeaways) ? r.key_takeaways : [],
-        autoQuizQuestions:
-          Array.isArray(r.auto_quiz_questions) && r.auto_quiz_questions.length > 0
-            ? r.auto_quiz_questions
-            : generateAutoQuizQuestions(
-                String(r.course_id),
-                String(r.title || "Lesson"),
-                String(r.description || ""),
-                Array.isArray(r.key_takeaways) ? r.key_takeaways : []
-              ),
-        isPublished: r.is_published !== false,
-        createdAt: String(r.created_at || new Date().toISOString()),
-      }));
-
-      const merged = localTracks.map((track) => {
-        const trackDbLessons = dbLessons.filter((l) => l.courseId === track.id);
-        if (trackDbLessons.length === 0) return { ...track, slug: track.id, color: track.coverColor };
-        const byNum = new Map<number, CourseLessonItem>();
-        track.lessons.forEach((l) => byNum.set(l.lessonNumber, l));
-        trackDbLessons.forEach((l) => byNum.set(l.lessonNumber, l));
-        const combined = Array.from(byNum.values()).sort((a, b) => a.lessonNumber - b.lessonNumber);
-        return {
-          ...track,
-          slug: track.id,
-          color: track.coverColor,
-          lessons: combined,
-        };
-      });
-
-      localStorage.setItem(LS_COURSES_KEY, JSON.stringify(merged));
-      return merged;
+    const dbCoursesMap = new Map<string, any>();
+    if (Array.isArray(coursesRes.data)) {
+      coursesRes.data.forEach((c: any) => dbCoursesMap.set(String(c.id), c));
     }
+
+    const dbLessons: CourseLessonItem[] = Array.isArray(lessonsRes.data)
+      ? lessonsRes.data.map((r: any) => ({
+          id: String(r.id),
+          courseId: String(r.course_id),
+          courseSlug: String(r.course_id),
+          lessonNumber: Number(r.lesson_number || 1),
+          title: String(r.title || "Lesson"),
+          description: String(r.description || ""),
+          summary: String(r.description || ""),
+          durationMinutes: Number(r.duration_minutes || 12),
+          videoUrl: String(r.video_url || ""),
+          videoSourceType:
+            r.video_source_type === "supabase_storage" ? "supabase_storage" : "url",
+          pairTag: String(r.pair_tag || "EUR/USD · 15M"),
+          keyTakeaways: Array.isArray(r.key_takeaways) ? r.key_takeaways : [],
+          autoQuizQuestions:
+            Array.isArray(r.auto_quiz_questions) && r.auto_quiz_questions.length > 0
+              ? r.auto_quiz_questions
+              : generateAutoQuizQuestions(
+                  String(r.course_id),
+                  String(r.title || "Lesson"),
+                  String(r.description || ""),
+                  Array.isArray(r.key_takeaways) ? r.key_takeaways : []
+                ),
+          isPublished: r.is_published !== false,
+          createdAt: String(r.created_at || new Date().toISOString()),
+        }))
+      : [];
+
+    const merged = localTracks.map((track) => {
+      const dbCourse = dbCoursesMap.get(track.id);
+      const trackDbLessons = dbLessons.filter((l) => l.courseId === track.id);
+      const byNum = new Map<number, CourseLessonItem>();
+      track.lessons.forEach((l) => byNum.set(l.lessonNumber, l));
+      trackDbLessons.forEach((l) => byNum.set(l.lessonNumber, l));
+      const combinedLessons =
+        trackDbLessons.length > 0
+          ? Array.from(byNum.values()).sort((a, b) => a.lessonNumber - b.lessonNumber)
+          : track.lessons;
+
+      return {
+        ...track,
+        slug: track.id,
+        color: track.coverColor,
+        levelPdfUrl: dbCourse?.level_pdf_url || track.levelPdfUrl || "",
+        levelPdfName: dbCourse?.level_pdf_name || track.levelPdfName || "",
+        levelQuizQuestions:
+          Array.isArray(dbCourse?.level_quiz_questions) &&
+          dbCourse.level_quiz_questions.length > 0
+            ? dbCourse.level_quiz_questions
+            : track.levelQuizQuestions || [],
+        lessons: combinedLessons,
+      };
+    });
+
+    localStorage.setItem(LS_COURSES_KEY, JSON.stringify(merged));
+    return merged;
   } catch (err) {
     console.debug("Supabase courses fetch note:", err);
   }
@@ -1027,6 +1262,160 @@ export async function fetchCoursesWithLessons(): Promise<CourseTrackItem[]> {
 }
 
 export const fetchCoursesWithLessonsFromDb = fetchCoursesWithLessons;
+
+// Upload PDF for a specific course level (Beginner, Intermediate, Essential, Advanced) and generate multi-question quiz
+export async function uploadCourseLevelPdfAndGenerateQuiz(params: {
+  courseId: string;
+  file?: File | null;
+  curriculumNotes?: string;
+  questionCount?: number;
+}): Promise<{
+  success: boolean;
+  pdfUrl: string;
+  pdfName: string;
+  questions: QuizQuestionItem[];
+  message: string;
+}> {
+  const tracks = getCachedCourses();
+  const track = tracks.find((t) => t.id === params.courseId) || tracks[0];
+
+  let pdfUrl = track.levelPdfUrl || "";
+  let pdfName = params.file?.name || track.levelPdfName || `${track.level}-Study-Guide.pdf`;
+  let pdfBase64 = "";
+
+  if (params.file) {
+    pdfBase64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(params.file!);
+    });
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const safePath = `${track.id}/${Date.now()}-${params.file.name.replace(
+          /[^a-zA-Z0-9._-]/g,
+          "_"
+        )}`;
+        const { error } = await supabase.storage.from("course-pdfs").upload(safePath, params.file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+        if (!error) {
+          const { data } = supabase.storage.from("course-pdfs").getPublicUrl(safePath);
+          if (data?.publicUrl) {
+            pdfUrl = data.publicUrl;
+          }
+        }
+      } catch {
+        // fallback
+      }
+    }
+    if (!pdfUrl) {
+      pdfUrl = URL.createObjectURL(params.file);
+    }
+  }
+
+  let generatedQuestions: QuizQuestionItem[] = [];
+  let apiMessage = "";
+
+  try {
+    const res = await fetch("/api/quiz/generate-from-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        courseId: track.id,
+        courseTitle: track.title,
+        level: track.level,
+        pdfBase64,
+        pdfName,
+        curriculumNotes: params.curriculumNotes || track.description,
+        questionCount: params.questionCount || 6,
+      }),
+    });
+    const data = await res.json();
+    if (Array.isArray(data?.questions) && data.questions.length > 0) {
+      generatedQuestions = data.questions;
+      apiMessage = data.message || "";
+    }
+  } catch {
+    // fallback if server endpoint unreachable
+  }
+
+  if (generatedQuestions.length === 0) {
+    generatedQuestions = generateAutoQuizQuestions(
+      track.id,
+      `${track.title} (${track.level} PDF)`,
+      params.curriculumNotes || track.description,
+      []
+    );
+  }
+
+  // Persist level PDF & generated multi-question quiz on the course track
+  const updatedTracks = tracks.map((t) =>
+    t.id === track.id
+      ? {
+          ...t,
+          levelPdfUrl: pdfUrl,
+          levelPdfName: pdfName,
+          levelQuizQuestions: generatedQuestions,
+        }
+      : t
+  );
+  localStorage.setItem(LS_COURSES_KEY, JSON.stringify(updatedTracks));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("courses")
+        .update({
+          level_pdf_url: pdfUrl,
+          level_pdf_name: pdfName,
+          level_quiz_questions: generatedQuestions,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", track.id);
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+  return {
+    success: true,
+    pdfUrl,
+    pdfName,
+    questions: generatedQuestions,
+    message:
+      apiMessage ||
+      `Uploaded "${pdfName}" for ${track.level} (${track.title}) and generated ${generatedQuestions.length} multi-choice quiz questions!`,
+  };
+}
+
+export async function saveCourseLevelQuizQuestionsToDb(
+  courseId: string,
+  questions: QuizQuestionItem[]
+): Promise<void> {
+  const tracks = getCachedCourses().map((t) =>
+    t.id === courseId ? { ...t, levelQuizQuestions: questions } : t
+  );
+  localStorage.setItem(LS_COURSES_KEY, JSON.stringify(tracks));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("courses")
+        .update({
+          level_quiz_questions: questions,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", courseId);
+    } catch {
+      // ignore
+    }
+  }
+  emitPortalUpdate();
+}
 
 export async function uploadCourseVideoFile(
   courseId: string,
@@ -1056,13 +1445,11 @@ export async function uploadCourseVideoFile(
     }
   }
 
-  // Fallback object URL for immediate session playback
   const blobUrl = URL.createObjectURL(file);
   return {
     success: true,
     url: blobUrl,
-    message:
-      "Video ready for playback. Run the Supabase SQL Upgrade Schema to enable permanent cloud bucket storage (course-videos).",
+    message: "Video ready for playback and attached to lesson.",
   };
 }
 
@@ -1103,7 +1490,6 @@ export async function saveCourseLessonToDb(params: {
     createdAt: new Date().toISOString(),
   };
 
-  // Update local cache immediately
   const tracks = getCachedCourses();
   const updatedTracks = tracks.map((t) => {
     if (t.id !== params.courseId) return t;
@@ -1147,7 +1533,7 @@ export async function saveCourseLessonToDb(params: {
   return {
     success: true,
     lesson: newLesson,
-    message: `Lesson #${newLesson.lessonNumber} ("${newLesson.title}") saved and ${autoQuizQuestions.length} quiz questions auto-generated!`,
+    message: `Video Lesson #${newLesson.lessonNumber} ("${newLesson.title}") published to ${params.courseId}!`,
   };
 }
 
@@ -1172,7 +1558,7 @@ export async function deleteCourseLessonFromDb(courseId: string, lessonId: strin
 }
 
 // ============================================================================
-// 6. REAL STUDENT LESSON PROGRESS, STREAK & QUIZ AVERAGE ENGINE (ZERO DEMO DATA)
+// 7. REAL STUDENT LESSON PROGRESS, STREAK & MULTI-QUESTION QUIZ ENGINE
 // ============================================================================
 
 export function getCachedLessonProgress(studentEmail: string): StudentLessonProgressItem[] {
@@ -1321,13 +1707,14 @@ export async function toggleLessonCompletedInDb(
         break;
       }
     }
-    if (!lessonObj) {
-      lessonObj = tracks[0].lessons[0];
-    }
   } else {
     studentObj = arg1.student;
     courseId = arg1.courseId;
     lessonObj = arg1.lesson;
+  }
+
+  if (!lessonObj) {
+    return { completed: false, courseProgressPct: 0 };
   }
 
   const cleanEmail = (studentObj.email || "").trim().toLowerCase();
@@ -1335,7 +1722,7 @@ export async function toggleLessonCompletedInDb(
   const allList: StudentLessonProgressItem[] = rawAll ? JSON.parse(rawAll) : [];
 
   const existingIdx = allList.findIndex(
-    (p) => p.studentEmail.toLowerCase() === cleanEmail && p.lessonId === lessonObj.id
+    (p) => p.studentEmail.toLowerCase() === cleanEmail && p.lessonId === lessonObj!.id
   );
 
   let isNowCompleted = true;
@@ -1392,8 +1779,8 @@ export async function toggleLessonCompletedInDb(
   const metrics = computeStudentRealDashboardMetrics(studentObj.email);
   const courseStat = metrics.courseBreakdown.find((c) => c.courseId === courseId);
 
-  // If course reaches 100%, auto-issue certificate
-  if (courseStat && courseStat.progressPct === 100) {
+  // If course has uploaded lessons and reaches 100%, auto-issue certificate & notify student
+  if (courseStat && courseStat.totalCount > 0 && courseStat.progressPct === 100) {
     await issueStudentCourseCertificate({
       studentEmail: cleanEmail,
       studentName: studentObj.fullName,
@@ -1432,7 +1819,7 @@ export async function recordQuizAttemptInDb(
       ? {
           student: { ...currentUser, email: arg1 },
           courseId: courseSlugArg || "forex-foundations",
-          quizTitle: quizTitleArg || "Course Assessment",
+          quizTitle: quizTitleArg || "Course Level PDF Assessment",
           correctAnswers: correctAnswersArg ?? 0,
           totalQuestions: totalQuestionsArg ?? 1,
         }
@@ -1513,7 +1900,7 @@ export interface StudentRealDashboardMetrics {
     progressPct: number;
     completedCount: number;
     totalCount: number;
-    nextLesson: CourseLessonItem;
+    nextLesson: CourseLessonItem | null;
   };
   studyHeatmap56Days: Array<{
     dateStr: string;
@@ -1573,14 +1960,12 @@ export function computeStudentRealDashboardMetrics(studentEmail: string): Studen
     totalLessonsCount > 0 ? Math.round((completedLessonsCount / totalLessonsCount) * 100) : 0;
   const hoursLearned = Number((totalMinutesLearned / 60).toFixed(1));
 
-  // Compute Quiz Average from real quiz attempts
   const totalQuizzesTaken = quizAttempts.length;
   const quizAveragePct =
     totalQuizzesTaken > 0
       ? Math.round(quizAttempts.reduce((sum, q) => sum + q.scorePercent, 0) / totalQuizzesTaken)
       : 0;
 
-  // Compute Real Consecutive Study Streak & 56-Day Study Activity Heatmap from actual timestamps
   const activityByDay = new Map<string, number>();
   progress.forEach((p) => {
     const day = p.completedAt.slice(0, 10);
@@ -1610,7 +1995,6 @@ export function computeStudentRealDashboardMetrics(studentEmail: string): Studen
     });
   }
 
-  // Consecutive days streak calculation
   let streakDays = 0;
   let bestStreakDays = 0;
   let runningStreak = 0;
@@ -1623,26 +2007,21 @@ export function computeStudentRealDashboardMetrics(studentEmail: string): Studen
     }
   }
 
-  // Current streak counting backwards from today (or yesterday)
   for (let i = studyHeatmap56Days.length - 1; i >= 0; i--) {
     const dayEntry = studyHeatmap56Days[i];
     if (dayEntry.count > 0) {
       streakDays += 1;
     } else if (i === studyHeatmap56Days.length - 1) {
-      // Allow today to have 0 if yesterday had activity
       continue;
     } else {
       break;
     }
   }
 
-  // Determine the active "Continue Learning" course
   const inProgressCourse =
     courseBreakdown.find((c) => c.completedCount > 0 && c.completedCount < c.totalCount) ||
-    courseBreakdown.find((c) => c.completedCount < c.totalCount) ||
+    courseBreakdown.find((c) => c.totalCount > 0 && c.completedCount < c.totalCount) ||
     courseBreakdown[0];
-
-  const fallbackLesson = tracks[0].lessons[0];
 
   return {
     overallProgressPct,
@@ -1660,7 +2039,7 @@ export function computeStudentRealDashboardMetrics(studentEmail: string): Studen
       progressPct: inProgressCourse.progressPct,
       completedCount: inProgressCourse.completedCount,
       totalCount: inProgressCourse.totalCount,
-      nextLesson: inProgressCourse.nextLesson || fallbackLesson,
+      nextLesson: inProgressCourse.nextLesson || null,
     },
     studyHeatmap56Days,
     recentQuizAttempts: quizAttempts.slice(0, 6),
@@ -1693,16 +2072,25 @@ export function generateQuizForCourse(courseSlug: string): QuizQuestionItem[] {
   const tracks = getCachedCourses();
   const track = tracks.find((t) => t.id === courseSlug || t.slug === courseSlug) || tracks[0];
   if (!track) return [];
+
+  // 1. Prefer Level PDF Quiz Questions uploaded by Admin for this level (Beginner / Intermediate / Essential / Advanced)
+  if (Array.isArray(track.levelQuizQuestions) && track.levelQuizQuestions.length > 0) {
+    return track.levelQuizQuestions;
+  }
+
+  // 2. Otherwise collect questions from lessons uploaded by Admin for this track
   const collected: QuizQuestionItem[] = [];
   for (const lesson of track.lessons) {
     if (Array.isArray(lesson.autoQuizQuestions) && lesson.autoQuizQuestions.length > 0) {
-      collected.push(lesson.autoQuizQuestions[0]);
+      collected.push(...lesson.autoQuizQuestions.slice(0, 2));
     }
   }
-  if (collected.length >= 5) {
+  if (collected.length >= 4) {
     return collected.slice(0, 8);
   }
-  return generateAutoQuizQuestions(track.id, track.title, track.description, []);
+
+  // 3. Multi-question fallback for the course level
+  return generateAutoQuizQuestions(track.id, `${track.title} (${track.level})`, track.description, []);
 }
 
 export function formatCountdown(scheduledAtIso: string): {
@@ -1743,8 +2131,224 @@ export function calculateLotSize(
 }
 
 // ============================================================================
-// 7. VERIFIED COURSE COMPLETION CERTIFICATES
+// 8. VERIFIED COURSE COMPLETION CERTIFICATES & ADMIN TEMPLATE STUDIO
 // ============================================================================
+
+const DEFAULT_CERT_TEMPLATE: CertificateTemplateConfig = {
+  id: "default",
+  templateImageUrl: "",
+  nameXPct: 50,
+  nameYPct: 48,
+  fontSize: 44,
+  fontColor: "#FFDE02",
+  showCourseTitle: true,
+  courseYPct: 62,
+  showIssueDate: true,
+  updatedAt: new Date().toISOString(),
+};
+
+export function getCachedCertificateTemplate(): CertificateTemplateConfig {
+  try {
+    const raw = localStorage.getItem(LS_CERT_TEMPLATE_KEY);
+    if (raw) {
+      return { ...DEFAULT_CERT_TEMPLATE, ...JSON.parse(raw) };
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_CERT_TEMPLATE;
+}
+
+export async function fetchCertificateTemplateFromDb(): Promise<CertificateTemplateConfig> {
+  const local = getCachedCertificateTemplate();
+  if (!isSupabaseConfigured || !supabase) return local;
+
+  try {
+    const { data, error } = await supabase
+      .from("certificate_templates")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    if (!error && data) {
+      const mapped: CertificateTemplateConfig = {
+        id: "default",
+        templateImageUrl: String(data.template_image_url || local.templateImageUrl || ""),
+        nameXPct: Number(data.name_x_pct ?? 50),
+        nameYPct: Number(data.name_y_pct ?? 48),
+        fontSize: Number(data.font_size ?? 44),
+        fontColor: String(data.font_color || "#FFDE02"),
+        showCourseTitle: Boolean(data.show_course_title ?? true),
+        courseYPct: Number(data.course_y_pct ?? 62),
+        showIssueDate: Boolean(data.show_issue_date ?? true),
+        updatedAt: String(data.updated_at || new Date().toISOString()),
+      };
+      localStorage.setItem(LS_CERT_TEMPLATE_KEY, JSON.stringify(mapped));
+      return mapped;
+    }
+  } catch {
+    // ignore
+  }
+  return local;
+}
+
+export async function uploadCertificateTemplateImage(
+  file: File
+): Promise<{ success: boolean; url: string; message: string }> {
+  const dataUrl = await compressImageToDataUrl(file, 1600);
+  let finalUrl = dataUrl;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filePath = `template-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from("certificate-templates")
+        .upload(filePath, file, { cacheControl: "3600", upsert: true });
+
+      if (!error) {
+        const { data } = supabase.storage.from("certificate-templates").getPublicUrl(filePath);
+        if (data?.publicUrl) {
+          finalUrl = data.publicUrl;
+        }
+      }
+    } catch {
+      // fallback to dataUrl
+    }
+  }
+
+  return {
+    success: true,
+    url: finalUrl,
+    message: "Certificate template artwork uploaded! Adjust the student name position below.",
+  };
+}
+
+export async function saveCertificateTemplateToDb(
+  config: CertificateTemplateConfig
+): Promise<CertificateTemplateConfig> {
+  const next = { ...config, updatedAt: new Date().toISOString() };
+  localStorage.setItem(LS_CERT_TEMPLATE_KEY, JSON.stringify(next));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from("certificate_templates").upsert(
+        {
+          id: "default",
+          template_image_url: next.templateImageUrl,
+          name_x_pct: next.nameXPct,
+          name_y_pct: next.nameYPct,
+          font_size: next.fontSize,
+          font_color: next.fontColor,
+          show_course_title: next.showCourseTitle,
+          course_y_pct: next.courseYPct,
+          show_issue_date: next.showIssueDate,
+          updated_at: next.updatedAt,
+        },
+        { onConflict: "id" }
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+  return next;
+}
+
+// Render personalized PNG certificate on an HTML5 Canvas with the student's real name
+export async function renderPersonalizedCertificateDataUrl(params: {
+  studentName: string;
+  courseTitle: string;
+  certificateCode: string;
+  issuedAt: string;
+  template: CertificateTemplateConfig;
+}): Promise<string> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 1130;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const { template } = params;
+  let drewCustomBg = false;
+
+  if (template.templateImageUrl) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = template.templateImageUrl;
+      });
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      drewCustomBg = true;
+    } catch {
+      drewCustomBg = false;
+    }
+  }
+
+  if (!drewCustomBg) {
+    // Institutional dark & gold fallback certificate artwork
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    grad.addColorStop(0, "#0B0D13");
+    grad.addColorStop(1, "#131824");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Outer & Inner Gold Borders
+    ctx.strokeStyle = "#FFDE02";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(48, 48, canvas.width - 96, canvas.height - 96);
+    ctx.strokeStyle = "rgba(255, 222, 2, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(68, 68, canvas.width - 136, canvas.height - 136);
+
+    // Header
+    ctx.fillStyle = "#FFDE02";
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("CANDLESTICKS TRADING ACADEMY · VERIFIED CREDENTIAL", canvas.width / 2, 180);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 56px sans-serif";
+    ctx.fillText("CERTIFICATE OF COMPLETION", canvas.width / 2, 270);
+
+    ctx.fillStyle = "#9AA4B5";
+    ctx.font = "26px sans-serif";
+    ctx.fillText("THIS IS PROUDLY PRESENTED TO", canvas.width / 2, 390);
+  }
+
+  // Draw Student Name at Admin's configured X/Y percentage coordinates
+  const nameX = (template.nameXPct / 100) * canvas.width;
+  const nameY = (template.nameYPct / 100) * canvas.height;
+  ctx.fillStyle = template.fontColor || "#FFDE02";
+  ctx.font = `bold ${Math.round(template.fontSize * 1.45)}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.fillText(params.studentName || "Verified Trader", nameX, nameY);
+
+  if (template.showCourseTitle) {
+    const courseY = (template.courseYPct / 100) * canvas.height;
+    if (!drewCustomBg) {
+      ctx.fillStyle = "#9AA4B5";
+      ctx.font = "24px sans-serif";
+      ctx.fillText("For successfully completing 100% of the curriculum in", canvas.width / 2, courseY - 48);
+    }
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 36px sans-serif";
+    ctx.fillText(params.courseTitle, nameX, courseY);
+  }
+
+  if (template.showIssueDate) {
+    ctx.fillStyle = "#9AA4B5";
+    ctx.font = "20px monospace";
+    const dateText = `Issued: ${new Date(params.issuedAt).toLocaleDateString()} · Credential ID: ${params.certificateCode} · Signed: Pastor Mike (Founder)`;
+    ctx.fillText(dateText, canvas.width / 2, canvas.height - 120);
+  }
+
+  return canvas.toDataURL("image/png");
+}
 
 export function getCachedCertificates(studentEmail?: string): StudentCertificateItem[] {
   try {
@@ -1842,6 +2446,14 @@ export async function issueStudentCourseCertificate(params: {
     }
   }
 
+  await createClientNotificationInDb({
+    studentEmail: cleanEmail,
+    category: "CERTIFICATE",
+    title: `Certificate Unlocked: ${cert.courseTitle}`,
+    message: `Congratulations ${cert.studentName}! Your personalized ${cert.courseTitle} certificate (${cert.certificateCode}) is ready to download in Progress.`,
+    linkUrl: "/progress",
+  });
+
   emitPortalUpdate();
   return cert;
 }
@@ -1875,94 +2487,20 @@ export async function revokeStudentCertificateInDb(certId: string): Promise<void
 }
 
 // ============================================================================
-// 8. LIVE SESSIONS, RTMP / BROWSER SCREEN SHARE & REAL-TIME LIVE CHAT
+// 9. LIVE SESSIONS (ZERO DEMO SESSIONS — ONLY ADMIN SCHEDULED / LIVE SESSIONS)
 // ============================================================================
-
-function getDefaultLiveSessions(): LiveSessionItem[] {
-  const now = new Date();
-  const nextSessionTime = new Date(now.getTime() + 2 * 60 * 60 * 1000 + 14 * 60 * 1000); // 2h 14m from now
-  const wedSessionTime = new Date(now.getTime() + 26 * 60 * 60 * 1000);
-  const sunSessionTime = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-
-  return [
-    {
-      id: "new-york",
-      slug: "new-york",
-      title: "New York Session: Live Market Breakdown & Execution",
-      description: "Live analysis and trade execution on EUR/USD, GBP/USD, and XAU/USD (Gold) as New York opens.",
-      scheduledAt: nextSessionTime.toISOString(),
-      durationMinutes: 90,
-      status: "scheduled",
-      streamMode: "screen_share",
-      rtmpIngestUrl: "rtmp://live.candlesticks.academy/live",
-      rtmpStreamKey: "csa_live_ny_qgcrue4rqj",
-      streamPlaybackUrl: "",
-      screenShareSnapshot: "",
-      focusPair: "EUR/USD · XAU/USD · GBP/USD",
-      viewersCount: 1,
-      pinnedResources: [
-        {
-          title: "New York Open Pre-Session Checklist & Key Levels",
-          type: "worksheet",
-          url: "#checklist",
-        },
-        {
-          title: "EUR/USD & XAU/USD Institutional Liquidity Map",
-          type: "chart",
-          url: "#liquidity-map",
-        },
-      ],
-    },
-    {
-      id: "risk-clinic",
-      slug: "risk-clinic",
-      title: "Risk Clinic: Protecting Capital & Scaling Accounts",
-      description: "Live workshop on position sizing, drawdown recovery, and trade journaling.",
-      scheduledAt: wedSessionTime.toISOString(),
-      durationMinutes: 60,
-      status: "scheduled",
-      streamMode: "screen_share",
-      rtmpIngestUrl: "rtmp://live.candlesticks.academy/live",
-      rtmpStreamKey: "csa_live_risk_qgcrue4rqj",
-      streamPlaybackUrl: "",
-      screenShareSnapshot: "",
-      focusPair: "XAU/USD · RISK MANAGEMENT",
-      viewersCount: 0,
-      pinnedResources: [],
-    },
-    {
-      id: "weekly-outlook",
-      slug: "weekly-outlook",
-      title: "Sunday Weekly Outlook & Institutional Order Flow",
-      description: "Mapping weekly higher-timeframe bias, DXY structure, and high-impact news catalysts.",
-      scheduledAt: sunSessionTime.toISOString(),
-      durationMinutes: 90,
-      status: "scheduled",
-      streamMode: "screen_share",
-      rtmpIngestUrl: "rtmp://live.candlesticks.academy/live",
-      rtmpStreamKey: "csa_live_outlook_qgcrue4rqj",
-      streamPlaybackUrl: "",
-      screenShareSnapshot: "",
-      focusPair: "DXY · EUR/USD · XAU/USD",
-      viewersCount: 0,
-      pinnedResources: [],
-    },
-  ];
-}
 
 export function getCachedLiveSessions(): LiveSessionItem[] {
   try {
     const raw = localStorage.getItem(LS_LIVE_SESSIONS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as LiveSessionItem[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {
     // ignore
   }
-  const defaults = getDefaultLiveSessions();
-  localStorage.setItem(LS_LIVE_SESSIONS_KEY, JSON.stringify(defaults));
-  return defaults;
+  return [];
 }
 
 export async function fetchLiveSessionsFromDb(): Promise<LiveSessionItem[]> {
@@ -1973,11 +2511,11 @@ export async function fetchLiveSessionsFromDb(): Promise<LiveSessionItem[]> {
     const { data, error } = await supabase
       .from("live_sessions")
       .select("*")
-      .order("created_at", { ascending: true });
+      .order("scheduled_at", { ascending: true });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) return local;
       const mapped: LiveSessionItem[] = data.map((r: any, idx: number) => {
-        const fallback = local[idx] || local[0];
         let parsedDate = r.scheduled_at ? new Date(String(r.scheduled_at)) : new Date();
         if (isNaN(parsedDate.getTime())) {
           parsedDate = new Date(Date.now() + (idx + 1) * 2 * 3600 * 1000);
@@ -1985,8 +2523,8 @@ export async function fetchLiveSessionsFromDb(): Promise<LiveSessionItem[]> {
         return {
           id: String(r.id || r.slug || `session-${idx}`),
           slug: String(r.slug || r.id || `session-${idx}`),
-          title: String(r.title || fallback.title),
-          description: String(r.description || fallback.description),
+          title: String(r.title || "Live Trading Session"),
+          description: String(r.description || ""),
           scheduledAt: parsedDate.toISOString(),
           durationMinutes: Number(r.duration_minutes || 90),
           status:
@@ -2005,9 +2543,7 @@ export async function fetchLiveSessionsFromDb(): Promise<LiveSessionItem[]> {
           screenShareSnapshot: String(r.screen_share_snapshot || ""),
           focusPair: String(r.focus_pair || "EUR/USD · XAU/USD"),
           viewersCount: Number(r.viewers_count || r.registered_count || 1),
-          pinnedResources: Array.isArray(r.pinned_resources)
-            ? r.pinned_resources
-            : fallback.pinnedResources,
+          pinnedResources: Array.isArray(r.pinned_resources) ? r.pinned_resources : [],
         };
       });
       localStorage.setItem(LS_LIVE_SESSIONS_KEY, JSON.stringify(mapped));
@@ -2093,26 +2629,13 @@ export function getCachedSessionChatMessages(sessionId: string): LiveChatMessage
   } catch {
     // ignore
   }
-  return [
-    {
-      id: "welcome-host-msg",
-      sessionId,
-      senderEmail: "mike.vinci77@gmail.com",
-      senderName: "Pastor Mike (Host)",
-      senderAvatar: "/ceo.png",
-      isHost: true,
-      message:
-        "Welcome to the live trading room. Drop the pairs you are watching in the chat and keep your Lot Size Calculator ready.",
-      isPinned: true,
-      createdAt: new Date().toISOString(),
-    },
-  ];
+  return [];
 }
 
 export async function fetchSessionChatMessagesFromDb(
   sessionId: string
 ): Promise<LiveChatMessageItem[]> {
-  if (!isSupabaseConfigured || !supabase) {
+  if (!isSupabaseConfigured || !supabase || !sessionId) {
     return getCachedSessionChatMessages(sessionId);
   }
 
@@ -2166,7 +2689,7 @@ export async function sendSessionChatMessageInDb(params: {
 
   try {
     const raw = localStorage.getItem(LS_LIVE_CHAT_KEY);
-    const list: LiveChatMessageItem[] = raw ? JSON.parse(raw) : getCachedSessionChatMessages(params.sessionId);
+    const list: LiveChatMessageItem[] = raw ? JSON.parse(raw) : [];
     list.push(newMsg);
     localStorage.setItem(LS_LIVE_CHAT_KEY, JSON.stringify(list.slice(-300)));
   } catch {
@@ -2251,86 +2774,8 @@ export async function deleteSessionChatMessageInDb(
 }
 
 // ============================================================================
-// 9. TRADING SIGNALS ENGINE (ADMIN PUBLISHER -> STUDENT OVERVIEW & SIGNAL FEED)
+// 10. TRADING SIGNALS ENGINE (ZERO DEMO DATA, UP TO 5 TPS + LIVE MARKET FEED)
 // ============================================================================
-
-const DEFAULT_TRADING_SIGNALS: TradingSignalItem[] = [
-  {
-    id: "gbp-usd",
-    pair: "GBP / USD",
-    direction: "BUY",
-    status: "ACTIVE",
-    entryPrice: "1.2674",
-    stopLoss: "1.2620",
-    takeProfit: "1.2760",
-    riskReward: "1 : 2.6",
-    entry: "1.2674",
-    sl: "1.2620",
-    tp: "1.2760",
-    rr: "1 : 2.6",
-    timeframe: "15M",
-    thesis:
-      "Price swept the London session sell-side liquidity low before reclaiming 4-hour demand with a clean 15-minute bullish displacement candle.",
-    commentary:
-      "Price swept the London session sell-side liquidity low before reclaiming 4-hour demand with a clean 15-minute bullish displacement candle.",
-    mentorQuote: "Patience is part of the setup. Do not chase price if entry is missed.",
-    currentPrice: "1.2704",
-    floatingPnlText: "+30.0 pips in profit",
-    createdBy: "Pastor Mike",
-    author: "Pastor Mike",
-    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "xau-usd",
-    pair: "XAU / USD",
-    direction: "SELL",
-    status: "HIT TP",
-    entryPrice: "2,341.20",
-    stopLoss: "2,350.00",
-    takeProfit: "2,318.50",
-    riskReward: "1 : 2.6",
-    entry: "2,341.20",
-    sl: "2,350.00",
-    tp: "2,318.50",
-    rr: "1 : 2.6",
-    timeframe: "15M",
-    thesis:
-      "New York open liquidity raid above equal highs into a 4H institutional supply zone followed by bearish market structure shift.",
-    commentary:
-      "New York open liquidity raid above equal highs into a 4H institutional supply zone followed by bearish market structure shift.",
-    mentorQuote: "Lock in partial profits at internal structure lows and trail stop to breakeven.",
-    currentPrice: "2,318.50",
-    floatingPnlText: "+227 pips · Target Hit",
-    createdBy: "Pastor Mike",
-    author: "Pastor Mike",
-    createdAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: "eur-usd",
-    pair: "EUR / USD",
-    direction: "BUY",
-    status: "CLOSED",
-    entryPrice: "1.0784",
-    stopLoss: "1.0740",
-    takeProfit: "1.0860",
-    riskReward: "1 : 2.2",
-    entry: "1.0784",
-    sl: "1.0740",
-    tp: "1.0860",
-    rr: "1 : 2.2",
-    timeframe: "1H",
-    thesis:
-      "Higher-timeframe order block retest aligned with DXY bearish rejection during London session expansion.",
-    commentary:
-      "Higher-timeframe order block retest aligned with DXY bearish rejection during London session expansion.",
-    mentorQuote: "Always align EUR/USD entries with DXY structure.",
-    currentPrice: "1.0860",
-    floatingPnlText: "+76.0 pips closed",
-    createdBy: "Pastor Mike",
-    author: "Pastor Mike",
-    createdAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-  },
-];
 
 function normalizeSignal(s: any): TradingSignalItem {
   const entry = String(s.entryPrice || s.entry || s.entry_price || "1.0850");
@@ -2339,21 +2784,48 @@ function normalizeSignal(s: any): TradingSignalItem {
   const rr = String(s.riskReward || s.rr || s.risk_reward || "1 : 2.5");
   const thesis = String(s.thesis || s.commentary || "");
   const author = String(s.createdBy || s.author || s.created_by || s.author_name || "Pastor Mike");
+
+  let tpLevels: SignalTpLevel[] = [];
+  if (Array.isArray(s.tpLevels) && s.tpLevels.length > 0) {
+    tpLevels = s.tpLevels.map((t: any, idx: number) => ({
+      level: Number(t.level || idx + 1),
+      label: String(t.label || `TP${Number(t.level || idx + 1)}`),
+      price: String(t.price || tp),
+      hit: Boolean(t.hit),
+      hitAt: t.hitAt ? String(t.hitAt) : undefined,
+    }));
+  } else if (Array.isArray(s.tp_levels) && s.tp_levels.length > 0) {
+    tpLevels = s.tp_levels.map((t: any, idx: number) => ({
+      level: Number(t.level || idx + 1),
+      label: String(t.label || `TP${Number(t.level || idx + 1)}`),
+      price: String(t.price || tp),
+      hit: Boolean(t.hit),
+      hitAt: t.hitAt ? String(t.hitAt) : undefined,
+    }));
+  } else if (tp) {
+    tpLevels = [
+      {
+        level: 1,
+        label: "TP1",
+        price: tp,
+        hit: s.status === "HIT TP" || s.status === "ALL TPS HIT" || s.status === "ALL TP HIT",
+      },
+    ];
+  }
+
   return {
     id: String(s.id || `sig-${Date.now()}`),
     pair: String(s.pair || "EUR / USD"),
     direction: s.direction === "SELL" ? "SELL" : "BUY",
-    status:
-      s.status === "HIT TP" || s.status === "HIT SL" || s.status === "CLOSED"
-        ? s.status
-        : "ACTIVE",
+    status: (s.status || "ACTIVE") as SignalStatusType,
     entryPrice: entry,
     stopLoss: sl,
-    takeProfit: tp,
+    takeProfit: tpLevels[0]?.price || tp,
+    tpLevels,
     riskReward: rr,
     entry,
     sl,
-    tp,
+    tp: tpLevels[0]?.price || tp,
     rr,
     timeframe: String(s.timeframe || "15M"),
     thesis,
@@ -2364,6 +2836,11 @@ function normalizeSignal(s: any): TradingSignalItem {
         "Patience is part of the setup. Wait for price to confirm structure."
     ),
     currentPrice: String(s.currentPrice || s.current_price || entry),
+    lastMarketPrice: s.lastMarketPrice
+      ? Number(s.lastMarketPrice)
+      : s.currentPrice
+      ? Number(String(s.currentPrice).replace(/[^0-9.-]/g, "")) || undefined
+      : undefined,
     floatingPnlText: String(s.floatingPnlText || s.floating_pnl_text || "Active setup"),
     createdBy: author,
     author,
@@ -2376,13 +2853,12 @@ export function getCachedTradingSignals(): TradingSignalItem[] {
     const raw = localStorage.getItem(LS_SIGNALS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as any[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(normalizeSignal);
+      if (Array.isArray(parsed)) return parsed.map(normalizeSignal);
     }
   } catch {
     // ignore
   }
-  localStorage.setItem(LS_SIGNALS_KEY, JSON.stringify(DEFAULT_TRADING_SIGNALS));
-  return DEFAULT_TRADING_SIGNALS;
+  return [];
 }
 
 export const getCachedSignals = getCachedTradingSignals;
@@ -2423,6 +2899,8 @@ export async function publishTradingSignalInDb(params: {
   entryPrice?: string;
   stopLoss?: string;
   takeProfit?: string;
+  tpLevels?: SignalTpLevel[];
+  tpLevelsInput?: string[]; // Up to 5 TP prices [TP1, TP2, TP3, TP4, TP5]
   riskReward?: string;
   entry?: string;
   sl?: string;
@@ -2433,7 +2911,7 @@ export async function publishTradingSignalInDb(params: {
   commentary?: string;
   mentorQuote?: string;
   author?: string;
-  status?: TradingSignalItem["status"];
+  status?: SignalStatusType;
 }): Promise<TradingSignalItem> {
   const slugId = `${params.pair.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${Date.now()
     .toString()
@@ -2441,7 +2919,28 @@ export async function publishTradingSignalInDb(params: {
 
   const entryVal = (params.entryPrice || params.entry || "1.0850").trim();
   const slVal = (params.stopLoss || params.sl || "1.0810").trim();
-  const tpVal = (params.takeProfit || params.tp || "1.0940").trim();
+  const rawTpList =
+    Array.isArray(params.tpLevelsInput) && params.tpLevelsInput.filter((x) => x.trim()).length > 0
+      ? params.tpLevelsInput.map((x) => x.trim()).filter(Boolean).slice(0, 5)
+      : [(params.takeProfit || params.tp || "1.0940").trim()];
+
+  const tpLevels: SignalTpLevel[] =
+    Array.isArray(params.tpLevels) && params.tpLevels.length > 0
+      ? params.tpLevels.map((t, idx) => ({
+          level: Number(t.level || idx + 1),
+          label: String(t.label || `TP${Number(t.level || idx + 1)}`),
+          price: String(t.price),
+          hit: Boolean(t.hit),
+          hitAt: t.hitAt,
+        }))
+      : rawTpList.map((priceStr, idx) => ({
+          level: idx + 1,
+          label: `TP${idx + 1}`,
+          price: priceStr,
+          hit: false,
+        }));
+
+  const tpVal = tpLevels[0]?.price || "1.0940";
   const rrVal = (params.riskReward || params.rr || "1 : 2.5").trim();
   const thesisVal = (
     params.thesis ||
@@ -2458,6 +2957,7 @@ export async function publishTradingSignalInDb(params: {
     entryPrice: entryVal,
     stopLoss: slVal,
     takeProfit: tpVal,
+    tpLevels,
     riskReward: rrVal,
     entry: entryVal,
     sl: slVal,
@@ -2470,7 +2970,7 @@ export async function publishTradingSignalInDb(params: {
       params.mentorQuote?.trim() ||
       "Manage your risk strictly at 1%–2% per setup. Never move your stop-loss.",
     currentPrice: entryVal,
-    floatingPnlText: "Just published · Active",
+    floatingPnlText: `Live · ${tpLevels.length} TP Target${tpLevels.length > 1 ? "s" : ""} Active`,
     createdBy: authorVal,
     author: authorVal,
     createdAt: new Date().toISOString(),
@@ -2490,6 +2990,7 @@ export async function publishTradingSignalInDb(params: {
           entry_price: signal.entryPrice,
           stop_loss: signal.stopLoss,
           take_profit: signal.takeProfit,
+          tp_levels: signal.tpLevels,
           risk_reward: signal.riskReward,
           timeframe: signal.timeframe,
           thesis: signal.thesis,
@@ -2516,18 +3017,333 @@ export async function publishTradingSignalInDb(params: {
     }
   }
 
+  // Fire broadcast notification to all clients' Alert Bells
+  const tpSummary = tpLevels.map((t) => `TP${t.level}: ${t.price}`).join(" · ");
+  await createClientNotificationInDb({
+    studentEmail: "ALL",
+    category: "SIGNAL_TP",
+    title: `New VIP Signal: ${signal.pair} (${signal.direction})`,
+    message: `Entry ${signal.entry} · SL ${signal.sl} · ${tpSummary}`,
+    linkUrl: `/signals/${signal.id}`,
+  });
+
   emitPortalUpdate();
   return signal;
 }
 
 export const createSignalInDb = publishTradingSignalInDb;
 
+function parseNumPrice(val: string | undefined): number {
+  if (!val) return NaN;
+  const cleaned = String(val).replace(/[^0-9.-]/g, "");
+  return parseFloat(cleaned);
+}
+
+// Evaluate a signal's TP1-TP5 and SL against a live market price
+export async function updateSignalLiveMarketPriceInDb(
+  signalId: string,
+  newMarketPriceStr: string
+): Promise<TradingSignalItem | null> {
+  const list = getCachedTradingSignals();
+  const idx = list.findIndex((s) => s.id === signalId);
+  if (idx < 0) return null;
+
+  const sig = { ...list[idx], tpLevels: list[idx].tpLevels.map((t) => ({ ...t })) };
+  const marketPrice = parseNumPrice(newMarketPriceStr);
+  if (isNaN(marketPrice)) return sig;
+
+  sig.currentPrice = newMarketPriceStr;
+
+  if (sig.status !== "CLOSED" && sig.status !== "HIT SL" && sig.status !== "ALL TPS HIT") {
+    const isBuy = sig.direction === "BUY";
+    const slPrice = parseNumPrice(sig.sl);
+    const newlyHitLevels: number[] = [];
+
+    // Check SL first if no TPs hit yet
+    const anyTpAlreadyHit = sig.tpLevels.some((t) => t.hit);
+    if (!isNaN(slPrice) && !anyTpAlreadyHit) {
+      const slTriggered = isBuy ? marketPrice <= slPrice : marketPrice >= slPrice;
+      if (slTriggered) {
+        sig.status = "HIT SL";
+        sig.floatingPnlText = `Stop-Loss hit at ${newMarketPriceStr}`;
+        await createClientNotificationInDb({
+          studentEmail: "ALL",
+          category: "SIGNAL_TP",
+          title: `${sig.pair} Stop-Loss Hit (${newMarketPriceStr})`,
+          message: `${sig.pair} (${sig.direction}) reached invalidation level ${sig.sl}.`,
+          linkUrl: `/signals/${sig.id}`,
+        });
+      }
+    }
+
+    // Check TP1 through TP5
+    if (sig.status !== "HIT SL") {
+      for (const tpObj of sig.tpLevels) {
+        const targetVal = parseNumPrice(tpObj.price);
+        if (!isNaN(targetVal) && !tpObj.hit) {
+          const hit = isBuy ? marketPrice >= targetVal : marketPrice <= targetVal;
+          if (hit) {
+            tpObj.hit = true;
+            tpObj.hitAt = new Date().toISOString();
+            newlyHitLevels.push(tpObj.level);
+          }
+        }
+      }
+
+      const totalTps = sig.tpLevels.length;
+      const hitCount = sig.tpLevels.filter((t) => t.hit).length;
+      const highestHit = sig.tpLevels
+        .filter((t) => t.hit)
+        .reduce((max, t) => Math.max(max, t.level), 0);
+
+      if (hitCount > 0) {
+        if (hitCount === totalTps) {
+          sig.status = totalTps === 1 ? "HIT TP" : "ALL TPS HIT";
+          sig.floatingPnlText =
+            totalTps === 1
+              ? `TP1 Hit (${sig.tpLevels[0].price})`
+              : `All ${totalTps} TPs Hit! (TP1–TP${totalTps})`;
+        } else {
+          sig.status = `TP${highestHit} HIT` as SignalStatusType;
+          sig.floatingPnlText = `Partial TP · ${hitCount}/${totalTps} TPs Hit (Up to TP${highestHit})`;
+        }
+      } else {
+        const entryNum = parseNumPrice(sig.entry);
+        if (!isNaN(entryNum)) {
+          const diff = isBuy ? marketPrice - entryNum : entryNum - marketPrice;
+          const mult = sig.pair.includes("XAU") ? 10 : sig.pair.includes("JPY") ? 100 : 10000;
+          const pips = Number((diff * mult).toFixed(1));
+          sig.floatingPnlText = `${pips >= 0 ? "+" : ""}${pips} pips (${newMarketPriceStr})`;
+        }
+      }
+
+      // Send client notifications for each newly hit TP level
+      for (const lvl of newlyHitLevels) {
+        const hitTpObj = sig.tpLevels.find((t) => t.level === lvl);
+        const allDone = hitCount === totalTps && totalTps > 1 && lvl === sig.tpLevels[totalTps - 1].level;
+        await createClientNotificationInDb({
+          studentEmail: "ALL",
+          category: "SIGNAL_TP",
+          title: allDone
+            ? `🎯 ALL TPs HIT on ${sig.pair}! (TP${lvl} @ ${hitTpObj?.price})`
+            : `✅ TP${lvl} HIT on ${sig.pair} @ ${hitTpObj?.price}!`,
+          message: allDone
+            ? `${sig.pair} (${sig.direction}) has smashed all ${totalTps} Take-Profit targets at ${newMarketPriceStr}!`
+            : `${sig.pair} (${sig.direction}) hit Take-Profit ${lvl} (${hitTpObj?.price}). ${hitCount} of ${totalTps} TPs reached.`,
+          linkUrl: `/signals/${sig.id}`,
+        });
+      }
+    }
+  }
+
+  list[idx] = sig;
+  localStorage.setItem(LS_SIGNALS_KEY, JSON.stringify(list));
+
+  // Also update any open student trades copied from this signal
+  updateOpenStudentTradesForSignal(sig, marketPrice);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("trading_signals")
+        .update({
+          status: sig.status,
+          current_price: sig.currentPrice,
+          tp_levels: sig.tpLevels,
+          floating_pnl_text: sig.floatingPnlText,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sig.id);
+    } catch {
+      // ignore
+    }
+  }
+
+  emitPortalUpdate();
+  return sig;
+}
+
+function updateOpenStudentTradesForSignal(sig: TradingSignalItem, livePrice: number) {
+  try {
+    const raw = localStorage.getItem(LS_TRADES_KEY);
+    if (!raw) return;
+    const allTrades = JSON.parse(raw) as StudentTradeItem[];
+    let changed = false;
+
+    const updated = allTrades.map((tr) => {
+      if (tr.status !== "OPEN") return tr;
+      const normPairA = tr.pair.replace(/\s+/g, "").toUpperCase();
+      const normPairB = sig.pair.replace(/\s+/g, "").toUpperCase();
+      if (tr.signalId !== sig.id && normPairA !== normPairB) return tr;
+
+      const openNum = parseNumPrice(tr.openPrice);
+      if (isNaN(openNum)) return tr;
+
+      const isBuy = tr.direction === "BUY";
+      const diff = isBuy ? livePrice - openNum : openNum - livePrice;
+      const pipMultiplier = normPairA.includes("XAU")
+        ? 100
+        : normPairA.includes("JPY")
+        ? 1000
+        : 100000;
+      const estPnlUsd = Number((diff * pipMultiplier * (tr.lots || 0.1)).toFixed(2));
+      const estReturnPct = Number(((estPnlUsd / 500) * 100).toFixed(2));
+
+      let nextStatus: StudentTradeItem["status"] = tr.status;
+      const tpNum = parseNumPrice(tr.takeProfitPrice);
+      const slNum = parseNumPrice(tr.stopLossPrice);
+
+      if (!isNaN(tpNum) && (isBuy ? livePrice >= tpNum : livePrice <= tpNum)) {
+        nextStatus = "WIN";
+      } else if (!isNaN(slNum) && (isBuy ? livePrice <= slNum : livePrice >= slNum)) {
+        nextStatus = "LOSS";
+      }
+
+      changed = true;
+      return {
+        ...tr,
+        closePrice: String(livePrice),
+        pnlUsd: estPnlUsd,
+        returnPct: estReturnPct,
+        status: nextStatus,
+      };
+    });
+
+    if (changed) {
+      localStorage.setItem(LS_TRADES_KEY, JSON.stringify(updated));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const DEFAULT_LIVE_MARKET_PRICES: Record<string, number> = {
+  "GBP / USD": 1.2685,
+  "EUR / USD": 1.0842,
+  "XAU / USD": 2342.6,
+  "USD / JPY": 154.85,
+  "GBP / JPY": 196.42,
+  "NAS100 / US100": 18240.5,
+};
+
+let cachedMarketPricesMemory: Record<string, number> = { ...DEFAULT_LIVE_MARKET_PRICES };
+
+export function getCachedMarketPrices(): Record<string, number> {
+  return cachedMarketPricesMemory;
+}
+
+export async function fetchLiveMarketPrices(): Promise<Record<string, number>> {
+  try {
+    const res = await fetch("/api/market/prices");
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.prices && typeof data.prices === "object") {
+        cachedMarketPricesMemory = { ...DEFAULT_LIVE_MARKET_PRICES, ...data.prices };
+        return cachedMarketPricesMemory;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return cachedMarketPricesMemory;
+}
+
+export async function evaluateSignalsAgainstMarketPrices(
+  pricesInput?: Record<string, number>
+): Promise<void> {
+  const prices = pricesInput || (await fetchLiveMarketPrices());
+  const signals = getCachedTradingSignals();
+
+  for (const sig of signals) {
+    if (
+      sig.status === "CLOSED" ||
+      sig.status === "HIT SL" ||
+      sig.status === "ALL TPS HIT" ||
+      sig.status === "ALL TP HIT"
+    ) {
+      continue;
+    }
+    const normKey = sig.pair.replace(/\s+/g, "").toUpperCase();
+    const matchedEntry = Object.entries(prices).find(
+      ([k]) => k.replace(/\s+/g, "").toUpperCase() === normKey
+    );
+    if (matchedEntry) {
+      await updateSignalLiveMarketPriceInDb(sig.id, String(matchedEntry[1]));
+    }
+  }
+}
+
+export const evaluateSignalsAgainstLiveMarket = evaluateSignalsAgainstMarketPrices;
+
+// Fetch live market prices from /api/market/prices and evaluate all active signals
+export async function syncLiveMarketPricesAndEvaluateSignals(): Promise<Record<string, number>> {
+  const prices = await fetchLiveMarketPrices();
+  await evaluateSignalsAgainstMarketPrices(prices);
+  return prices;
+}
+
+// Admin helper to manually mark a specific TP level (TP1..TP5) hit or update signal status
+export async function triggerSignalTpLevelHitInDb(
+  signalId: string,
+  tpLevelNumber: number,
+  hitState?: boolean
+): Promise<void> {
+  const list = getCachedTradingSignals();
+  const sig = list.find((s) => s.id === signalId);
+  if (!sig) return;
+  const targetTp = sig.tpLevels.find((t) => t.level === tpLevelNumber);
+  if (targetTp) {
+    if (hitState === false) {
+      targetTp.hit = false;
+      targetTp.hitAt = undefined;
+      const anyHit = sig.tpLevels.some((t) => t.hit);
+      sig.status = anyHit ? "PARTIAL TP" : "ACTIVE";
+      localStorage.setItem(LS_SIGNALS_KEY, JSON.stringify(list));
+      emitPortalUpdate();
+      return;
+    }
+    await updateSignalLiveMarketPriceInDb(signalId, targetTp.price);
+  }
+}
+
+export const triggerSignalTpLevelInDb = triggerSignalTpLevelHitInDb;
+
 export async function updateTradingSignalStatusInDb(
   signalId: string,
-  status: TradingSignalItem["status"]
+  status: SignalStatusType
 ): Promise<void> {
-  const list = getCachedTradingSignals().map((s) => (s.id === signalId ? { ...s, status } : s));
+  const list = getCachedTradingSignals().map((s) => {
+    if (s.id !== signalId) return s;
+    const updatedTpLevels =
+      status === "ALL TPS HIT" || status === "HIT TP"
+        ? s.tpLevels.map((t) => ({ ...t, hit: true, hitAt: t.hitAt || new Date().toISOString() }))
+        : status === "ACTIVE"
+        ? s.tpLevels.map((t) => ({ ...t, hit: false, hitAt: undefined }))
+        : s.tpLevels;
+    return {
+      ...s,
+      status,
+      tpLevels: updatedTpLevels,
+      floatingPnlText:
+        status === "ALL TPS HIT" || status === "HIT TP"
+          ? "All Targets Hit"
+          : status === "HIT SL"
+          ? "Stop-Loss Hit"
+          : s.floatingPnlText,
+    };
+  });
   localStorage.setItem(LS_SIGNALS_KEY, JSON.stringify(list));
+
+  const targetSig = list.find((s) => s.id === signalId);
+  if (targetSig && (status === "HIT TP" || status === "ALL TPS HIT" || status === "HIT SL")) {
+    await createClientNotificationInDb({
+      studentEmail: "ALL",
+      category: "SIGNAL_TP",
+      title: `${targetSig.pair} Signal Status: ${status}`,
+      message: `${targetSig.pair} (${targetSig.direction}) updated to ${status}.`,
+      linkUrl: `/signals/${targetSig.id}`,
+    });
+  }
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -2564,7 +3380,7 @@ export async function deleteTradingSignalFromDb(signalId: string): Promise<void>
 export const deleteSignalFromDb = deleteTradingSignalFromDb;
 
 // ============================================================================
-// 10. MY TRADES ENGINE (EXNESS PARTNER FEED + MANUAL/SIGNAL LOGGING, 10/PAGE)
+// 11. MY TRADES ENGINE (REAL COPIED & EXNESS SYNCED TRADES ONLY, 10 PER PAGE)
 // ============================================================================
 
 function normalizeTrade(r: any, fallbackEmail = "", fallbackAcct = ""): StudentTradeItem {
@@ -2599,15 +3415,38 @@ function normalizeTrade(r: any, fallbackEmail = "", fallbackAcct = ""): StudentT
     studentEmail: String(r.studentEmail || r.student_email || fallbackEmail).toLowerCase(),
     tradingAccountId: acct,
     exnessAccountId: acct,
+    signalId: r.signalId || r.signal_id ? String(r.signalId || r.signal_id) : undefined,
     pair: String(r.pair || "EUR / USD"),
     direction: dirUpper,
     lotSize: lotsVal,
     lots: lotsVal,
     openPrice: String(r.openPrice || r.open_price || "1.0800"),
     closePrice: String(r.closePrice || r.close_price || "1.0850"),
+    takeProfitPrice:
+      r.takeProfitPrice || r.take_profit_price || r.customTp
+        ? String(r.takeProfitPrice || r.take_profit_price || r.customTp)
+        : undefined,
+    stopLossPrice:
+      r.stopLossPrice || r.stop_loss_price || r.customSl
+        ? String(r.stopLossPrice || r.stop_loss_price || r.customSl)
+        : undefined,
+    customTp:
+      r.customTp || r.takeProfitPrice || r.take_profit_price
+        ? String(r.customTp || r.takeProfitPrice || r.take_profit_price)
+        : undefined,
+    customSl:
+      r.customSl || r.stopLossPrice || r.stop_loss_price
+        ? String(r.customSl || r.stopLossPrice || r.stop_loss_price)
+        : undefined,
+    tpLevelSelected:
+      r.tpLevelSelected || (r.selectedTpLevel ? `TP${r.selectedTpLevel}` : undefined),
+    selectedTpLevel:
+      r.selectedTpLevel || r.selected_tp_level
+        ? Number(r.selectedTpLevel || r.selected_tp_level)
+        : undefined,
     pnlUsd,
     returnPct,
-    status: statusVal,
+    status: rawStatus === "PARTIAL TP" ? "PARTIAL TP" : statusVal,
     source: sourceVal,
     notes: String(r.notes || ""),
     executedAt: String(r.executedAt || r.executed_at || r.traded_at || new Date().toISOString()),
@@ -2691,14 +3530,21 @@ export async function fetchStudentTradesFromDb(
 export async function addStudentTradeInDb(params: {
   studentEmail: string;
   exnessAccountId: string;
+  signalId?: string;
   pair: string;
   direction: "BUY" | "SELL";
   lots: number;
   openPrice: string;
   closePrice: string;
+  takeProfitPrice?: string;
+  stopLossPrice?: string;
+  customTp?: string;
+  customSl?: string;
+  tpLevelSelected?: string;
+  selectedTpLevel?: number;
   pnlUsd: number;
   returnPct: number;
-  status: "WIN" | "LOSS" | "OPEN";
+  status: "WIN" | "LOSS" | "OPEN" | "PARTIAL TP";
   source: "EXNESS_SYNC" | "SIGNAL_COPY" | "MANUAL";
   notes?: string;
 }): Promise<StudentTradeItem> {
@@ -2708,12 +3554,19 @@ export async function addStudentTradeInDb(params: {
       studentEmail: params.studentEmail,
       tradingAccountId: params.exnessAccountId,
       exnessAccountId: params.exnessAccountId,
+      signalId: params.signalId,
       pair: params.pair,
       direction: params.direction,
       lots: params.lots,
       lotSize: params.lots,
       openPrice: params.openPrice,
       closePrice: params.closePrice,
+      takeProfitPrice: params.takeProfitPrice || params.customTp,
+      stopLossPrice: params.stopLossPrice || params.customSl,
+      customTp: params.customTp || params.takeProfitPrice,
+      customSl: params.customSl || params.stopLossPrice,
+      tpLevelSelected: params.tpLevelSelected,
+      selectedTpLevel: params.selectedTpLevel,
       pnlUsd: params.pnlUsd,
       returnPct: params.returnPct,
       status: params.status,
@@ -2735,11 +3588,15 @@ export async function addStudentTradeInDb(params: {
       await supabase.from("student_trades").insert({
         student_email: newTrade.studentEmail,
         trading_account_id: newTrade.tradingAccountId,
+        signal_id: newTrade.signalId || "",
         pair: newTrade.pair,
         direction: newTrade.direction === "SELL" ? "Sell" : "Buy",
         lot_size: newTrade.lots,
         open_price: newTrade.openPrice,
         close_price: newTrade.closePrice,
+        take_profit_price: newTrade.takeProfitPrice || "",
+        stop_loss_price: newTrade.stopLossPrice || "",
+        selected_tp_level: newTrade.selectedTpLevel || 1,
         pnl_usd: newTrade.pnlUsd,
         return_pct: newTrade.returnPct,
         status: newTrade.status === "OPEN" ? "Open" : "Closed",
@@ -2751,6 +3608,17 @@ export async function addStudentTradeInDb(params: {
       console.debug("Supabase addStudentTradeInDb note:", err);
     }
   }
+
+  // Create a client-specific notification in the Alert Bell & Admin Audit Log
+  await createClientNotificationInDb({
+    studentEmail: params.studentEmail,
+    category: "TRADE",
+    title: `Trade Copied to Exness: ${newTrade.pair} (${newTrade.direction})`,
+    message: `${newTrade.lots} Lots @ ${newTrade.openPrice}${
+      newTrade.takeProfitPrice ? ` · Target TP: ${newTrade.takeProfitPrice}` : ""
+    }${newTrade.stopLossPrice ? ` · SL: ${newTrade.stopLossPrice}` : ""}`,
+    linkUrl: "/trades",
+  });
 
   emitPortalUpdate();
   return newTrade;
@@ -2776,6 +3644,8 @@ export async function syncExnessPartnerSummaryToTradesInDb(
     lots: Number(Math.max(0.01, summary.volumeLots).toFixed(2)),
     openPrice: "2,324.50",
     closePrice: "2,338.80",
+    takeProfitPrice: "2,338.80",
+    stopLossPrice: "2,315.00",
     pnlUsd: Number(Math.max(15, summary.rewardUsd * 3.2).toFixed(2)),
     returnPct: 4.8,
     status: "WIN",
@@ -2804,7 +3674,6 @@ export async function deleteStudentTradeFromDb(tradeId: string): Promise<void> {
   emitPortalUpdate();
 }
 
-// Get synced Exness Partner Client metrics for a student's linked Trading Account ID
 export async function getStudentExnessPartnerFeedSummary(student: ExnessStudent): Promise<{
   foundInPartnerFeed: boolean;
   tradingAccountId: string;
@@ -2893,7 +3762,7 @@ export async function getStudentExnessPartnerFeedSummary(student: ExnessStudent)
 }
 
 // ============================================================================
-// 11. DIRECT MENTOR Q&A / SUPPORT MESSAGING (STUDENT <-> ADMIN)
+// 12. DIRECT MENTOR Q&A / SUPPORT MESSAGING (STUDENT <-> ADMIN)
 // ============================================================================
 
 export function getCachedMentorMessages(studentEmail?: string): MentorMessageItem[] {
@@ -2992,12 +3861,22 @@ export async function sendMentorMessageInDb(params: {
     }
   }
 
+  if (params.senderRole === "admin") {
+    await createClientNotificationInDb({
+      studentEmail: item.studentEmail,
+      category: "ACCOUNT",
+      title: `New Reply from Pastor Mike (${item.subject})`,
+      message: item.message,
+      linkUrl: "/settings#mentor-qa",
+    });
+  }
+
   emitPortalUpdate();
   return item;
 }
 
 // ============================================================================
-// 12. STUDENT PROFILE PHOTO UPLOAD (SUPABASE BUCKET `student-avatars` + DB SYNC)
+// 13. STUDENT PROFILE PHOTO UPLOAD (SUPABASE BUCKET `student-avatars` + DB SYNC)
 // ============================================================================
 
 async function compressImageToDataUrl(file: File, maxDim = 320): Promise<string> {
@@ -3065,7 +3944,6 @@ export async function uploadStudentProfileAvatar(
     }
   }
 
-  // Update current user & student roster (and sync to public.students in Supabase)
   const updatedStudent: ExnessStudent = {
     ...student,
     avatarUrl: finalAvatarUrl,
@@ -3090,8 +3968,8 @@ export async function uploadStudentProfileAvatar(
     success: true,
     avatarUrl: finalAvatarUrl,
     message: uploadedToBucket
-      ? "Profile picture uploaded to Supabase Storage (student-avatars) and synced to Admin Roster!"
-      : "Profile picture saved and synced to your profile & Admin Roster!",
+      ? "Profile picture uploaded to Supabase Storage and synced to your topbar & Admin Roster!"
+      : "Profile picture saved and synced to your topbar & Admin Roster!",
   };
 }
 
@@ -3103,7 +3981,7 @@ export async function uploadStudentAvatarToStorage(
 }
 
 // ============================================================================
-// 13. HIGH-IMPACT FOREX ECONOMIC CALENDAR
+// 14. HIGH-IMPACT FOREX ECONOMIC CALENDAR
 // ============================================================================
 
 export function getHighImpactEconomicEvents(): EconomicCalendarEvent[] {

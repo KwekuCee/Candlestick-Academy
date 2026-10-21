@@ -1,365 +1,115 @@
-# Premium Client & Admin Dashboard Suite + Full Supabase Database Integration
+# Candlesticks Trading Academy — Live Market Telemetry, Multi-TP Signals, PDF Quiz Engine & Certificate Studio
 
-This plan upgrades the Candlesticks Academy Client Dashboard and Founder Admin Console into a live, database-driven trading terminal and learning platform backed by Supabase—eliminating all hardcoded demo metrics, removing the student-side "Admin demo" button, and adding course video uploads, auto-generated quizzes, live screen-share/RTMP streaming with real-time chat, signal publishing, 10-per-page trade analytics, profile photo uploads, and direct mentor messaging.
+This upgrade refines the Client Dashboard and Founder Admin Console to eliminate all remaining demo fallback records, fix card typography and spacing alignments, wire the notification bell to real client-specific audit and trade alerts, enable AI-assisted multi-question quizzes from uploaded level PDFs, connect signals to live market prices with up to 5 Take-Profit targets (TP1–TP5), provide an interactive Copy & Log Trade execution modal for Exness, and introduce an Admin Certificate Template Studio with customizable student name placement.
 
 ---
 
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> All product choices from your clarification answers have been locked into this plan, and the complete **Supabase SQL Upgrade Schema** is provided below so you can run it directly in your Supabase SQL Editor (and it will also be available via a one-click copy/push button inside your Admin Console).
+> All four architectural decisions below have been confirmed from your answers and integrated into this plan:
 
-- **Confirmed Decision 1 — Live Session Broadcasting**: Hybrid **Browser Screen Share / Webcam (WebRTC/Live Canvas Relay)** plus **RTMP Ingest & HLS/Stream URL support**, allowing you to share your trading screen directly from the browser or stream via OBS/RTMP while students watch live and chat in real time.
-- **Confirmed Decision 2 — Course Video Hosting**: Supports **both direct video file uploads to Supabase Storage (`course-videos` bucket) and external video URLs** (MP4, HLS, YouTube, Vimeo) with support for unlimited lessons (12, 16, 20+ per course track) across all 4 tracks.
-- **Confirmed Decision 3 — My Trades Feed (10 Per Page)**: Combines **live Exness Partner API account sync** (volume, reward, account status) with **student trade logging & one-click signal execution tracking**, strictly paginated at **10 trades per page** with live pair search and status/direction filtering.
-- **Confirmed Decision 4 — All 5 Premium Client-Admin Upgrades Included**:
-  1. **Interactive Lot Size & Risk Calculator + Signal Execution Tracker**
-  2. **Verified Course Completion Certificates** (claimable at 100% completion, managed by Admin)
-  3. **Direct 1-on-1 Mentor Q&A & Support Messaging** between Student and Admin
-  4. **Custom Trading Risk Profile, Goals & Session Alert Preferences** in Settings
-  5. **High-Impact Forex Economic Calendar** on the Client Dashboard Overview
+- **Confirmed Decision 1 — AI-Assisted Level PDF Quiz Generation**: In the Admin Course Studio, you can upload four level PDFs (**Beginner**, **Intermediate**, **Essential**, and **Advanced**) or per-lesson PDFs. A server-side Gemini endpoint (`gemini-3.8-flash`) extracts the curriculum concepts from the uploaded PDF and generates a multi-question assessment for that level, which you can review, edit, or regenerate before publishing.
+- **Confirmed Decision 2 — Live Market Price Feed + Admin Override for Multi-TP Signals (TP1–TP5)**: Signals support up to **5 Take-Profit levels (`TP1` through `TP5`)**. A real-time market price engine streams live Forex, Gold (`XAU/USD`), and Crypto prices (with manual Admin override controls) to automatically detect and update when a signal hits `TP1`, `TP2`, `TP3`, `TP4`, `TP5` (Partial TP vs. All TPs Hit) or `SL`, firing instant client alerts.
+- **Confirmed Decision 3 — Interactive Copy & Log Trade Modal + Exness WebTerminal Bridge**: Clicking **Copy & Log Trade** on any signal opens an execution modal where the student configures their custom **Lot Size**, selects their target **Take-Profit level (`TP1`–`TP5` or custom price)** and **Stop-Loss**, logs the trade to their database ledger, and optionally launches the Exness WebTerminal with pre-copied order parameters.
+- **Confirmed Decision 4 — Admin Certificate Template Upload with Adjustable Name Coordinates**: Removes raw database labels (`.public.student_certificates`) from the Progress UI, aligns certificate cards cleanly, and adds a **Certificate Template Designer** in the Admin Console where you upload your official certificate artwork, position the student's name (`X/Y` coordinates, font size, color) with a live preview, and automatically render downloadable personalized certificates as students complete each track.
 
 ---
 
-## 1. Complete Supabase SQL Upgrade Schema
+### 1. Overview & Core Concept
 
-> [!NOTE]
-> Copy and run the SQL block below in your **Supabase SQL Editor** to create all new tables, columns, indexes, and storage buckets (`student-avatars` and `course-videos`) required by the Client and Admin Dashboards.
-
-```sql
--- ============================================================================
--- CANDLESTICKS ACADEMY — FULL CLIENT & ADMIN DASHBOARD SUPABASE UPGRADE SCHEMA
--- Safe to run multiple times (idempotent)
--- ============================================================================
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- 1. UPGRADE public.students WITH PROFILE AVATAR, STREAK & TRADING PREFERENCES
-ALTER TABLE public.students
-  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
-  ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '',
-  ADD COLUMN IF NOT EXISTS telegram_handle TEXT DEFAULT '',
-  ADD COLUMN IF NOT EXISTS preferred_session TEXT DEFAULT 'New York',
-  ADD COLUMN IF NOT EXISTS risk_per_trade_pct NUMERIC(5,2) DEFAULT 1.00,
-  ADD COLUMN IF NOT EXISTS account_balance_usd NUMERIC(12,2) DEFAULT 100.00,
-  ADD COLUMN IF NOT EXISTS target_monthly_return_pct NUMERIC(6,2) DEFAULT 10.00,
-  ADD COLUMN IF NOT EXISTS trading_style TEXT DEFAULT 'Intraday Structure',
-  ADD COLUMN IF NOT EXISTS auto_copy_signals BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS notify_signals BOOLEAN DEFAULT TRUE,
-  ADD COLUMN IF NOT EXISTS notify_sessions BOOLEAN DEFAULT TRUE,
-  ADD COLUMN IF NOT EXISTS streak_days INTEGER DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS best_streak_days INTEGER DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS last_active_date DATE;
-
--- 2. COURSES TABLE (The 4 Core Tracks + Any Additional Admin Tracks)
-CREATE TABLE IF NOT EXISTS public.courses (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  level TEXT NOT NULL DEFAULT 'Beginner',
-  description TEXT NOT NULL DEFAULT '',
-  cover_color TEXT NOT NULL DEFAULT 'gold',
-  sort_order INTEGER NOT NULL DEFAULT 1,
-  certificate_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-INSERT INTO public.courses (id, title, level, description, cover_color, sort_order)
-VALUES
-  ('forex-foundations', 'Forex Foundations', 'Beginner', 'Master currency pairs, pips, lots, leverage, market sessions, and foundational candlestick structure.', 'gold', 1),
-  ('technical-analysis', 'Technical Analysis', 'Intermediate', 'Identify multi-timeframe market structure, liquidity sweeps, supply and demand zones, and high-probability entries.', 'blue', 2),
-  ('risk-psychology', 'Risk & Psychology', 'Essential', 'Protect your capital with strict position sizing, drawdown rules, and emotional discipline under live market pressure.', 'violet', 3),
-  ('price-action', 'Advanced Price Action', 'Advanced', 'Institutional order flow, session liquidity raids, displacement candles, and precision execution models.', 'green', 4)
-ON CONFLICT (id) DO NOTHING;
-
--- 3. COURSE LESSONS TABLE (Unlimited Video Lessons + Auto-Generated Quizzes)
-CREATE TABLE IF NOT EXISTS public.course_lessons (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-  lesson_number INTEGER NOT NULL DEFAULT 1,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  duration_minutes INTEGER NOT NULL DEFAULT 12,
-  video_url TEXT NOT NULL DEFAULT '',
-  video_source_type TEXT NOT NULL DEFAULT 'url', -- 'supabase_storage' | 'url'
-  pair_tag TEXT DEFAULT 'EUR/USD · 15M',
-  key_takeaways JSONB NOT NULL DEFAULT '[]'::jsonb,
-  auto_quiz_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
-  is_published BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_course_lessons_course_order
-  ON public.course_lessons(course_id, lesson_number ASC);
-
--- 4. STUDENT LESSON PROGRESS TABLE (Real Completion %, Hours & Streak Tracking)
-CREATE TABLE IF NOT EXISTS public.student_lesson_progress (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id TEXT NOT NULL,
-  student_email TEXT NOT NULL,
-  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-  lesson_id UUID NOT NULL REFERENCES public.course_lessons(id) ON DELETE CASCADE,
-  completed BOOLEAN NOT NULL DEFAULT TRUE,
-  watch_minutes NUMERIC(6,2) NOT NULL DEFAULT 0,
-  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(student_email, lesson_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_student_lesson_progress_email
-  ON public.student_lesson_progress(student_email);
-
--- 5. STUDENT QUIZ ATTEMPTS TABLE (Real Quiz Average & Assessment History)
-CREATE TABLE IF NOT EXISTS public.student_quiz_attempts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id TEXT NOT NULL,
-  student_email TEXT NOT NULL,
-  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-  lesson_id UUID REFERENCES public.course_lessons(id) ON DELETE SET NULL,
-  quiz_title TEXT NOT NULL,
-  score_percent NUMERIC(5,2) NOT NULL,
-  correct_answers INTEGER NOT NULL,
-  total_questions INTEGER NOT NULL,
-  passed BOOLEAN NOT NULL DEFAULT FALSE,
-  attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_student_quiz_attempts_email
-  ON public.student_quiz_attempts(student_email);
-
--- 6. LIVE SESSIONS TABLE (Admin Scheduling, RTMP/Screen Share & Replays)
-CREATE TABLE IF NOT EXISTS public.live_sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug TEXT UNIQUE NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  scheduled_at TIMESTAMPTZ NOT NULL,
-  duration_minutes INTEGER NOT NULL DEFAULT 90,
-  status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled' | 'live' | 'ended'
-  stream_mode TEXT NOT NULL DEFAULT 'screen_share', -- 'screen_share' | 'rtmp_hls' | 'embed'
-  rtmp_ingest_url TEXT DEFAULT 'rtmp://live.candlesticks.academy/live',
-  rtmp_stream_key TEXT DEFAULT '',
-  stream_playback_url TEXT DEFAULT '',
-  screen_share_snapshot TEXT DEFAULT '',
-  focus_pair TEXT DEFAULT 'EUR/USD · XAU/USD',
-  viewers_count INTEGER NOT NULL DEFAULT 0,
-  pinned_resources JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 7. LIVE SESSION CHAT MESSAGES TABLE (Real-Time Student & Host Chat)
-CREATE TABLE IF NOT EXISTS public.live_session_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id TEXT NOT NULL,
-  sender_email TEXT NOT NULL,
-  sender_name TEXT NOT NULL,
-  sender_avatar TEXT DEFAULT '',
-  is_host BOOLEAN NOT NULL DEFAULT FALSE,
-  message TEXT NOT NULL,
-  is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_live_session_messages_session
-  ON public.live_session_messages(session_id, created_at ASC);
-
--- 8. TRADING SIGNALS TABLE (Admin Signal Publishing -> Student Dashboard & Feed)
-CREATE TABLE IF NOT EXISTS public.trading_signals (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  pair TEXT NOT NULL,
-  direction TEXT NOT NULL CHECK (direction IN ('BUY', 'SELL')),
-  status TEXT NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE' | 'HIT TP' | 'HIT SL' | 'CLOSED'
-  entry_price TEXT NOT NULL,
-  stop_loss TEXT NOT NULL,
-  take_profit TEXT NOT NULL,
-  risk_reward TEXT NOT NULL DEFAULT '1 : 2.5',
-  timeframe TEXT NOT NULL DEFAULT '15M',
-  thesis TEXT NOT NULL DEFAULT '',
-  mentor_quote TEXT DEFAULT 'Patience is part of the setup. Wait for price to confirm structure.',
-  current_price TEXT DEFAULT '',
-  floating_pnl_text TEXT DEFAULT '',
-  created_by TEXT DEFAULT 'Pastor Mike',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_trading_signals_created
-  ON public.trading_signals(created_at DESC);
-
--- 9. STUDENT TRADES TABLE (My Trades — Paginated 10 Per Page, Real P&L & Filters)
-CREATE TABLE IF NOT EXISTS public.student_trades (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_email TEXT NOT NULL,
-  trading_account_id TEXT NOT NULL,
-  pair TEXT NOT NULL,
-  direction TEXT NOT NULL CHECK (direction IN ('Buy', 'Sell')),
-  lot_size NUMERIC(8,2) NOT NULL DEFAULT 0.10,
-  open_price TEXT NOT NULL,
-  close_price TEXT NOT NULL,
-  pnl_usd NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-  return_pct NUMERIC(7,2) NOT NULL DEFAULT 0.00,
-  status TEXT NOT NULL DEFAULT 'Closed', -- 'Open' | 'Closed' | 'Verified'
-  source TEXT NOT NULL DEFAULT 'exness_sync', -- 'exness_sync' | 'manual' | 'signal_copy'
-  notes TEXT DEFAULT '',
-  executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_student_trades_email_account
-  ON public.student_trades(student_email, trading_account_id, executed_at DESC);
-
--- 10. DIRECT MENTOR Q&A / SUPPORT MESSAGES TABLE (Student <-> Admin Messaging)
-CREATE TABLE IF NOT EXISTS public.mentor_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_email TEXT NOT NULL,
-  student_name TEXT NOT NULL,
-  student_avatar TEXT DEFAULT '',
-  sender_role TEXT NOT NULL CHECK (sender_role IN ('student', 'admin')),
-  subject TEXT DEFAULT 'Trading & Mentorship Question',
-  message TEXT NOT NULL,
-  is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_mentor_messages_student
-  ON public.mentor_messages(student_email, created_at ASC);
-
--- 11. STUDENT COURSE CERTIFICATES TABLE
-CREATE TABLE IF NOT EXISTS public.student_certificates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_email TEXT NOT NULL,
-  student_name TEXT NOT NULL,
-  course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-  course_title TEXT NOT NULL,
-  certificate_code TEXT UNIQUE NOT NULL,
-  quiz_average NUMERIC(5,2) NOT NULL DEFAULT 100.00,
-  approved_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
-  issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(student_email, course_id)
-);
-
--- 12. SUPABASE STORAGE BUCKETS FOR PROFILE AVATARS & COURSE VIDEOS
-INSERT INTO storage.buckets (id, name, public)
-VALUES
-  ('student-avatars', 'student-avatars', true),
-  ('course-videos', 'course-videos', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
-
--- Enable RLS with permissive policies for anon/authenticated client operations
-ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.course_lessons ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_lesson_progress ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_quiz_attempts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.live_session_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.trading_signals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_trades ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mentor_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_certificates ENABLE ROW LEVEL SECURITY;
-
-DO $$
-DECLARE
-  tbl TEXT;
-BEGIN
-  FOREACH tbl IN ARRAY ARRAY[
-    'courses', 'course_lessons', 'student_lesson_progress',
-    'student_quiz_attempts', 'live_sessions', 'live_session_messages',
-    'trading_signals', 'student_trades', 'mentor_messages', 'student_certificates'
-  ]
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS "Allow full access to %I" ON public.%I;', tbl, tbl);
-    EXECUTE format('CREATE POLICY "Allow full access to %I" ON public.%I FOR ALL USING (true) WITH CHECK (true);', tbl, tbl);
-  END LOOP;
-END $$;
-
-DROP POLICY IF EXISTS "Public Access student-avatars" ON storage.objects;
-CREATE POLICY "Public Access student-avatars"
-  ON storage.objects FOR ALL
-  USING (bucket_id IN ('student-avatars', 'course-videos'))
-  WITH CHECK (bucket_id IN ('student-avatars', 'course-videos'));
-```
+- **What It Does**: Transforms the client portal into a 100% database-driven institutional trading terminal and academy where every course video, PDF-derived multi-question quiz, scheduled/live broadcast, multi-TP market signal, copied Exness trade, notification bell alert, and downloadable completion certificate is controlled from the Founder Admin Console.
+- **Target Audience / Persona**:
+  - **Students / Clients**: Funded and onboarding Exness traders studying structured tracks, taking level PDF assessments, copying multi-TP signals with custom risk parameters, and downloading personalized certificates.
+  - **Founder / Admin (Pastor Mike)**: Uploads course videos and level PDFs, schedules or broadcasts live sessions, posts multi-TP signals connected to live market prices, monitors client audit/trade alerts, and manages the official certificate template.
+- **Key Value**: Eradicates all static/demo placeholders, fixes card layout and whitespace imbalances, and automates real-time trade target tracking (`TP1`–`TP5`), client notifications, and credential issuance.
 
 ---
 
-## 2. User Experience & Visual Design
+### 2. User Experience & Visual Design
 
-### Visual Identity & Theme
-- **Aesthetic Direction**: Institutional Dark Trading Terminal & Executive Mentorship Suite. Deep obsidian canvas (`#0b0d12`), elevated slate surfaces (`#131720`), crisp 1px structural borders (`rgba(255,255,255,0.08)`), and high-intent Candlesticks Gold (`#ffde02`) accents.
-- **Navigation Clean-Up**:
-  - The **"Admin demo"** link is **completely removed** from the student sidebar (`PortalLayout`).
-  - Students see their uploaded **Profile Avatar** (or monogram fallback), live Exness verification status, and clean navigation links (`Overview`, `Courses`, `Live sessions`, `Signals`, `My trades`, `Progress`, `Mentor Q&A`, `Settings`).
-  - Admins have a dedicated **Founder Console** (`Overview`, `Students`, `Courses & Videos`, `Live Studio`, `Post a Signal`, `Mentor Inbox`, `Verification`, `Payments & Tiers`).
-- **Typography & Tabular Discipline**:
-  - `Manrope` for crisp headings and UI controls, paired with `DM Mono` / `tabular-nums` for all prices, P&L figures, countdown clocks, lot calculations, and percentages.
-
-### Key User Flows
-1. **Overview (`/dashboard`) — Zero Demo Data**:
-   - Displays the student's **real Course Progress %**, **real Learning Streak (days)**, and **real Quiz Average %** computed directly from `student_lesson_progress` and `student_quiz_attempts`.
-   - **Next Live Session Banner**: Shows a live, second-by-second countdown (`HH:MM:SS`) to the next scheduled session in `public.live_sessions` (or a pulsing `LIVE NOW` entry button when the admin starts streaming).
-   - **Latest Signal Snapshot**: Displays the newest signal posted by the Admin from `public.trading_signals` with one-click actions to calculate lot size or log the trade.
-   - **Interactive Lot Size & Risk Calculator + High-Impact Economic Calendar**: Embedded directly on the Overview for daily pre-session preparation.
-2. **Courses, Unlimited Video Uploads & Auto-Generated Quizzes (`/courses`, `/admin/courses`)**:
-   - Retains the 4 core tracks (**Forex Foundations**, **Technical Analysis**, **Risk & Psychology**, **Advanced Price Action**).
-   - In **Admin Course & Video Manager (`/admin/courses`)**, you can select any of the 4 tracks and upload unlimited lessons (12, 16, 20+ videos) via direct Supabase Storage video file upload (`course-videos`) or video URL, along with lesson notes/key takeaways.
-   - **Auto-Generated Quizzes**: Saving a lesson/course automatically generates multiple-choice quiz questions from the course/lesson title, description, and key takeaways. Students take quizzes at `/quiz/:courseId`, recording real scores to `public.student_quiz_attempts`.
-   - **Verified Course Certificates**: Unlock at 100% course completion with a printable/downloadable certificate view.
-3. **Live Sessions, Screen Share / RTMP Broadcast & Live Chat (`/sessions`, `/sessions/live/:sessionId`, `/admin/sessions`)**:
-   - **Admin Live Studio**: Schedule sessions, configure RTMP Server URL + Stream Key or HLS/Embed URL, or click **"Go Live & Share Screen"** directly in the browser using `navigator.mediaDevices.getDisplayMedia`.
-   - **Student Live Room**: Real-time countdown until live; once live, students watch the shared screen / video stream and participate in the **Live Chat** (`public.live_session_messages`) with real-time message delivery, student avatars, and host highlights.
-4. **Signals (`/signals`, `/admin/signals/new`)**:
-   - Publishing a signal from the Admin Console inserts directly into `public.trading_signals` and updates all student dashboards immediately.
-   - Students can filter signals (`All`, `Active`, `Closed`, `Wins`), toggle **Automatic Signal Copying** (persisted to `public.students`), calculate position size, or log the trade to `My Trades`.
-5. **My Trades (`/trades`) — Capped at 10 Per Page**:
-   - Syncs live account volume and reward summaries from `public.exness_partner_clients` alongside individual trade records in `public.student_trades`.
-   - Students can log trades manually or from signals; the table enforces **10 trades per page** with pagination controls, pair search, and status/direction filters.
-6. **Settings & Profile Photo Upload (`/settings`)**:
-   - Students upload their profile photo to `student-avatars` (with instant preview and persistent URL in `public.students.avatar_url`), visible to Admin in the Student Roster and Verification tables.
-   - Includes **Trading Risk Profile & Goals**, **Notification & Auto-Copy Toggles**, **Direct Mentor Q&A Messenger**, and **Security / Password Update**.
+- **Key User Flows**:
+  1. **Overview & Client Alert Bell**:
+     - The **High-Impact Macroeconomic Calendar** card header and 5-column event strip use balanced typography, clean spacing, tabular numerals, and uncrowded metadata rows.
+     - Clicking the **Alert Bell** in the top bar opens a dedicated **Client Notifications & Audit Log Popover** displaying all alerts relevant to that student (new signals posted, `TP1`–`TP5` hits, copied trade executions, deposit verifications, and certificate issuances). Clicking an individual notification marks it as read; clicking **Mark All as Read** clears the unread badge and syncs with the database.
+     - Uploading a profile photo in **Settings & Profile** immediately updates the avatar beside the Alert Bell in the top header, in the sidebar profile card, and in the Admin Student Roster.
+  2. **Courses & 4-Level PDF Auto-Quiz Engine**:
+     - Retains the 4 signature level tracks (**Forex Foundations · Beginner**, **Technical Analysis · Intermediate**, **Risk & Psychology · Essential**, **Advanced Price Action · Advanced**) while removing all hardcoded demo lessons so only videos named and uploaded by Admin in Supabase are shown.
+     - Admin uploads a **Course Level PDF** (for Beginner, Intermediate, Essential, or Advanced) in the Admin Course Studio. The AI-assisted PDF parser generates a 5-to-10 question multiple-choice quiz with explanations for that level, stored in Supabase.
+  3. **Live Sessions (Real Scheduled & Live Broadcasts Only)**:
+     - Removes all demo sessions. Displays only sessions scheduled by Admin in `public.live_sessions` with a live ticking countdown until broadcast, or an active live badge and stream player when Admin is live.
+  4. **Signals Feed,Redesigned Risk Calculator & Multi-TP Auto-Tracking**:
+     - Redesigns the **Interactive Position Size & Risk Calculator** card with a structured 2-tier layout, aligned input labels, tabular numeric inputs, and a clear recommended lot size output panel.
+     - Displays only Admin-posted signals (zero demo signals). Admin can define **TP1, TP2, TP3, TP4, and TP5** when posting a signal.
+     - Live market prices stream continuously next to each active signal. As live market price crosses each target, the signal status automatically updates (`TP1 HIT · PARTIAL`, `TP2 HIT · PARTIAL`, ..., `ALL TPS HIT`) and dispatches an audit notification to the student's Alert Bell.
+  5. **Copy & Log Trade Modal & My Trades Ledger**:
+     - Clicking **Copy & Log Trade** on a signal opens an interactive configuration modal pre-filled with the signal's Entry, SL, and `TP1`–`TP5` choices plus the student's recommended Lot Size. The student can customize their Lot Size, custom TP, and SL, then click **Execute & Copy to Exness** to record the trade in `public.student_trades` and open the Exness terminal bridge.
+     - **My Trades** displays real copied and synced Exness trades (capped at 10 per page with working filters) and updates live P&L against the market price feed.
+  6. **Progress & Customizable Certificate Template Studio**:
+     - Removes `.public.student_certificates` and other technical table names from section headers, and aligns card text and actions cleanly.
+     - In Admin, a new **Certificate Template Studio** lets you upload a custom certificate background image, drag/adjust the student name vertical/horizontal offset, font style, and color with a live preview, and save it to Supabase so completed students see their own name rendered directly onto your official certificate template and can download it as a high-resolution PNG/PDF.
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Institutional dark financial terminal (`#0B0D12` canvas, `#12161F` elevated cards, subtle `1px solid rgba(255,255,255,0.08)` borders).
+  - *Color Palette & Mood*: High-contrast gold accent (`#FFDE02` with `#0B0D0F` ink) for primary actions, emerald (`#16A34A`) for TP hits and verified status, and crimson (`#F6465D`) for stop-loss/high-impact warnings.
+  - *Typography & Hierarchy*: Clean sans-serif headers with `text-wrap: balance`, paired with `JetBrains Mono` / `tabular-nums` for all prices, countdowns, lot sizes, and P&L figures.
 
 ---
 
-## 3. Technical Architecture & Data Strategy
+### 3. Key Product Decisions & Trade-Offs
 
+- **Decision 1 — Multi-TP State Machine (`TP1`–`TP5`)**:
+  - *Chosen Approach*: Store both a primary `take_profit` and a structured `tp_levels` JSONB array (`[{ level: 1, price: "2350.00", hit: true, hitAt: "..." }, ...]`) on `public.trading_signals`.
+  - *Why*: Allows Admin to specify anywhere from 1 to 5 Take-Profit targets per signal while preserving backward compatibility with existing single-TP queries, and enables granular status badges (`TP1 HIT`, `PARTIAL TP (2/4)`, `ALL TPS HIT`).
+- **Decision 2 — Live Market Price Engine with Dual Feed + Admin Override**:
+  - *Chosen Approach*: Poll live public Forex/Gold/Crypto spot rates (via public market ticker endpoints for `XAU/USD`, `EUR/USD`, `GBP/USD`, `USD/JPY`, `BTC/USD`, etc.) every 5 seconds in a live price service, paired with an Admin price override control in the Signal Studio.
+  - *Why*: Guarantees real-time automatic TP1–TP5 detection during market hours while giving Pastor Mike instant manual control to trigger or test TP1–TP5 hits anytime.
+- **Decision 3 — Client Notification Bell Linked to Audit Logs**:
+  - *Chosen Approach*: Create a unified `public.client_notifications` / audit log stream filtered by `student_email` (plus global broadcast alerts like new signals and TP hits) with per-item `is_read` and bulk `Mark All as Read` persistence.
+  - *Why*: Ensures every trade copy, TP hit, deposit verification, and certificate update pertinent to that specific client appears in their bell dropdown and syncs with the Admin Audit Log.
+
+---
+
+### 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+- **Architecture & Component Diagram**:
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                        CANDLESTICKS ACADEMY FRONTEND                         │
-│                                                                              │
-│  ┌───────────────────────────────────┐  ┌─────────────────────────────────┐  │
-│  │       STUDENT PORTAL VIEWS        │  │      FOUNDER ADMIN CONSOLE      │  │
-│  │ • Overview (Real KPIs + Calc)     │  │ • Admin Overview & Roster       │  │
-│  │ • Courses (4 Tracks + Videos)     │  │   (Shows Student Uploaded Photo)│  │
-│  │ • Auto-Quiz & Certificates        │  │ • Course & Video Upload Studio  │  │
-│  │ • Live Room (Stream + Live Chat)  │  │   (12+ Lessons + Auto-Quiz Gen) │  │
-│  │ • Signal Feed & Detail            │  │ • Live Broadcast & RTMP Studio  │  │
-│  │ • My Trades (10/Page + Filters)   │  │   (Screen Share + RTMP + Chat)  │  │
-│  │ • Progress (Real Heatmap/Scores)  │  │ • Signal Publisher & Status Mgr │  │
-│  │ • Settings (Avatar + Risk + Q&A)  │  │ • Mentor Q&A Inbox & Replies    │  │
-│  └─────────────────┬─────────────────┘  └────────────────┬────────────────┘  │
-└────────────────────┼─────────────────────────────────────┼───────────────────┘
-                     │                                     │
-                     ▼                                     ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                 DATA & REALTIME SYNC LAYER (src/app/portalDataStore.ts)      │
-│  • Real-time Supabase CRUD + Realtime Channel Subscriptions                  │
-│  • Auto-Quiz Generator Engine (derives MCQs from uploaded course lessons)    │
-│  • Supabase Storage Uploader (`student-avatars` & `course-videos` buckets)   │
-│  • Exness Partner API Sync (`/api/exness/auto-sync`)                         │
-└────────────────────────────────────┬─────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         SUPABASE POSTGRESQL & STORAGE                        │
-│  Tables: students, exness_partner_clients, courses, course_lessons,          │
-│          student_lesson_progress, student_quiz_attempts, live_sessions,      │
-│          live_session_messages, trading_signals, student_trades,             │
-│          mentor_messages, student_certificates                               │
-│  Buckets: student-avatars, course-videos                                     │
+│                        SUPABASE POSTGRES & STORAGE                           │
+│  • courses & course_lessons (level_pdf_url, level_quiz_questions JSONB)      │
+│  • trading_signals (tp_levels JSONB [TP1..TP5], live_price, tp_hit_count)    │
+│  • student_trades (custom_tp, custom_sl, lot_size, exness_ticket, live_pnl)  │
+│  • client_notifications (student_email, category, title, detail, is_read)    │
+│  • certificate_templates & student_certificates (template_url, name_x/y)     │
+└──────────────────┬────────────────────────────────────────┬──────────────────┘
+                   │                                        │
+        ┌──────────▼──────────┐                  ┌──────────▼──────────┐
+        │   EXPRESS SERVER    │                  │ LIVE PRICE MONITOR  │
+        │ /api/quiz/from-pdf  │                  │ Real-time FX / XAU  │
+        │ (Gemini 3.8 Flash)  │                  │ Auto TP1–TP5 Engine │
+        └──────────┬──────────┘                  └──────────┬──────────┘
+                   │                                        │
+┌──────────────────▼────────────────────────────────────────▼──────────────────┐
+│                 CLIENT TRADING TERMINAL & ADMIN CONSOLE                      │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌───────────────┐ │
+│  │ Portal Topbar           │  │ VIP Signals & Copy Modal│  │ Progress &    │ │
+│  │ • Alert Bell Dropdown   │  │ • Redesigned Risk Calc  │  │ Certificates  │ │
+│  │   (Read / Mark All Read)│  │ • Multi-TP (TP1–TP5)    │  │ • Canvas PNG  │ │
+│  │ • Live Profile Avatar   │  │ • Custom TP/Lot Modal   │  │   Renderer    │ │
+│  └─────────────────────────┘  └─────────────────────────┘  └───────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Interactive Component & State Mapping
-- **Overview & Progress Engine**: Queries `student_lesson_progress`, `course_lessons`, and `student_quiz_attempts` for the logged-in student's email/ID. Calculates exact completion percentages per track, total hours learned, consecutive daily activity streak, and mean quiz score.
-- **Course Video & Auto-Quiz Engine**: Admin form in `/admin/courses` uploads video files to Supabase Storage `course-videos` (or saves external URLs) and invokes the quiz generator to create 5–10 domain-accurate multiple-choice questions from the lesson title, description, and key takeaways.
-- **Live Broadcast & Chat Engine**: Admin `/admin/sessions` creates/updates rows in `public.live_sessions`, provides WebRTC `getDisplayMedia` screen capture with live preview + frame broadcast or RTMP/HLS stream playback, and syncs chat messages through `public.live_session_messages`.
-- **Trades Pagination & Filtering**: Queries `public.student_trades` for the student's `exnessId` / `email`, applies client-side search (`pair`) and filters (`All`, `Open`, `Closed`, `Buy`, `Sell`, `Profitable`), and slices strictly at `10` rows per page with page navigation.
-- **Avatar Upload Flow**: In `/settings`, selecting an image uploads to `supabase.storage.from('student-avatars')` (with automatic compressed data-URL fallback if the bucket hasn't been created yet) and updates `public.students.avatar_url`, immediately reflecting in the Admin Student Roster and Drawer.
+- **Data Model & Schema Upgrades (`CLIENT_DASHBOARD_UPGRADE_SQL`)**:
+  - `public.courses`: Add `level_pdf_url TEXT`, `level_pdf_name TEXT`, and `level_quiz_questions JSONB DEFAULT '[]'::jsonb` for the 4 course levels (`Beginner`, `Intermediate`, `Essential`, `Advanced`).
+  - `public.trading_signals`: Add `tp_levels JSONB DEFAULT '[]'::jsonb` (supporting up to 5 TPs), `hit_tps INTEGER[] DEFAULT '{}'`, and `market_price_source TEXT DEFAULT 'live'`.
+  - `public.student_trades`: Add `signal_id TEXT`, `selected_tp_level INTEGER`, `take_profit_price TEXT`, and `stop_loss_price TEXT`.
+  - `public.client_notifications`: Table storing client-specific and broadcast audit alerts (`id`, `student_email`, `title`, `message`, `type`, `read_by JSONB`, `is_read BOOLEAN`, `created_at`) synced with Admin audit logs.
+  - `public.certificate_templates`: Stores Admin's uploaded certificate template image URL, student name `x_pct`, `y_pct`, `font_size`, `font_color`, and signature metadata.
+  - Storage Buckets: Add `course-pdfs` and `certificate-templates` alongside `student-avatars` and `course-videos`.
+
+- **Interactive Component & State Mapping**:
+  - **Topbar Alert Bell (`PortalLayout`)**: Clicking the bell toggles a glassmorphic popover listing notifications for `student.email`. Clicking an item calls `markNotificationReadInDb(id, student.email)` and navigates to the relevant trade/signal/certificate; clicking "Mark all as read" calls `markAllNotificationsReadInDb(student.email)`.
+  - **Macroeconomic Calendar & Risk Calculator Cards**: Rebuilt with CSS Grid alignment, consistent `p-5` inner spacing, `tabular-nums` data columns, and zero text overlap or awkward wrapping.
+  - **Admin Level PDF Quiz Generator (`AdminCoursesPage`)**: Admin selects any of the 4 tracks, uploads a PDF file (or pastes curriculum text), and triggers `/api/quiz/generate-from-pdf` using `@google/genai` (`gemini-3.8-flash` with `responseSchema`) to extract 5–10 structured multiple-choice questions for that level.
+  - **Copy & Log Trade Modal (`SignalFeedPage` & `SignalDetailPage`)**: Opens when clicking "Copy & Log Trade", allowing custom Lot Size, SL, and TP1–TP5 selection, saving to `public.student_trades`, firing a client alert, and offering a direct "Launch Exness WebTerminal" action.
+  - **Admin Certificate Designer & Student Canvas Download (`AdminCoursesPage` & `ProgressPage`)**: Admin uploads a certificate background image and adjusts name placement sliders with live preview; students who complete a track see their name rendered onto the template via HTML5 `<canvas>` and can download a crisp PNG/PDF certificate with one click.

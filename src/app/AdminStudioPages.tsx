@@ -2,12 +2,12 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   Award,
-  BookOpen,
-  Calendar,
   Check,
   CheckCircle2,
   Copy,
+  FileText,
   Film,
+  Image as ImageIcon,
   MessageSquare,
   MonitorUp,
   Pin,
@@ -20,35 +20,43 @@ import {
   Square,
   Trash2,
   Upload,
-  Video,
 } from "lucide-react";
 import {
+  CertificateTemplateConfig,
   CourseLessonItem,
   CourseTrackItem,
   LiveChatMessageItem,
   LiveSessionItem,
   MentorMessageItem,
+  QuizQuestionItem,
   StudentCertificateItem,
   deleteCourseLessonFromDb,
   deleteLiveSessionFromDb,
   deleteSessionChatMessageInDb,
+  fetchCertificateTemplateFromDb,
   fetchCoursesWithLessons,
   fetchLiveSessionsFromDb,
   fetchMentorMessagesFromDb,
   fetchSessionChatMessagesFromDb,
+  getCachedCertificateTemplate,
   getCachedCertificates,
   getCachedCourses,
   getCachedLiveSessions,
+  renderPersonalizedCertificateDataUrl,
+  saveCertificateTemplateToDb,
   saveCourseLessonToDb,
+  saveCourseLevelQuizQuestionsToDb,
   saveLiveSessionInDb,
   sendMentorMessageInDb,
   sendSessionChatMessageInDb,
   togglePinSessionChatMessageInDb,
+  uploadCertificateTemplateImage,
+  uploadCourseLevelPdfAndGenerateQuiz,
   uploadCourseVideoFile,
 } from "./portalDataStore";
 
 // ============================================================================
-// 1. ADMIN COURSES, UNLIMITED VIDEO UPLOAD & AUTO-QUIZ MANAGER (/admin/courses)
+// 1. ADMIN COURSES, VIDEO UPLOADS, 4-LEVEL PDF QUIZ ENGINE & CERTIFICATE STUDIO
 // ============================================================================
 
 export function AdminCoursesPage() {
@@ -57,7 +65,7 @@ export function AdminCoursesPage() {
   const [certificates, setCertificates] = useState<StudentCertificateItem[]>(getCachedCertificates());
 
   // New / Edit Lesson Form State
-  const [lessonNumber, setLessonNumber] = useState<number>(13);
+  const [lessonNumber, setLessonNumber] = useState<number>(1);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [durationMinutes, setDurationMinutes] = useState<number>(15);
@@ -72,6 +80,23 @@ export function AdminCoursesPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [previewLesson, setPreviewLesson] = useState<CourseLessonItem | null>(null);
 
+  // 4-Level PDF Auto-Quiz Generator State
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfCurriculumNotes, setPdfCurriculumNotes] = useState("");
+  const [pdfQuestionCount, setPdfQuestionCount] = useState<number>(6);
+  const [generatingPdfQuiz, setGeneratingPdfQuiz] = useState(false);
+  const [pdfFeedback, setPdfFeedback] = useState<string | null>(null);
+  const [editingQuestions, setEditingQuestions] = useState<QuizQuestionItem[]>([]);
+
+  // Certificate Template Studio State
+  const [certTemplate, setCertTemplate] = useState<CertificateTemplateConfig>(
+    getCachedCertificateTemplate()
+  );
+  const [uploadingCertTemplate, setUploadingCertTemplate] = useState(false);
+  const [certPreviewDataUrl, setCertPreviewDataUrl] = useState<string>("");
+  const [certSampleStudentName, setCertSampleStudentName] = useState("Samuel Osei");
+  const [certStudioFeedback, setCertStudioFeedback] = useState<string | null>(null);
+
   const selectedTrack = tracks.find((t) => t.id === selectedCourseId) || tracks[0];
 
   async function reloadCourses() {
@@ -81,12 +106,24 @@ export function AdminCoursesPage() {
     const current = data.find((t) => t.id === selectedCourseId) || data[0];
     if (current) {
       setLessonNumber(current.lessons.length + 1);
+      setEditingQuestions(current.levelQuizQuestions || []);
     }
   }
 
   useEffect(() => {
     void reloadCourses();
+    void fetchCertificateTemplateFromDb().then(setCertTemplate);
   }, [selectedCourseId]);
+
+  useEffect(() => {
+    void renderPersonalizedCertificateDataUrl({
+      studentName: certSampleStudentName || "Verified Student",
+      courseTitle: selectedTrack?.title || "Forex Foundations",
+      certificateCode: "CSA-PREVIEW-001",
+      issuedAt: new Date().toISOString(),
+      template: certTemplate,
+    }).then(setCertPreviewDataUrl);
+  }, [certTemplate, certSampleStudentName, selectedTrack?.title]);
 
   async function handleVideoFileSelect(file: File | null) {
     if (!file) return;
@@ -134,19 +171,63 @@ export function AdminCoursesPage() {
     await reloadCourses();
   }
 
+  async function handleGenerateLevelPdfQuiz(e: FormEvent) {
+    e.preventDefault();
+    setGeneratingPdfQuiz(true);
+    setPdfFeedback(null);
+    const res = await uploadCourseLevelPdfAndGenerateQuiz({
+      courseId: selectedCourseId,
+      file: pdfFile,
+      curriculumNotes: pdfCurriculumNotes,
+      questionCount: pdfQuestionCount,
+    });
+    setGeneratingPdfQuiz(false);
+    setPdfFeedback(res.message);
+    setEditingQuestions(res.questions);
+    await reloadCourses();
+  }
+
+  async function handleSaveEditedQuestions() {
+    await saveCourseLevelQuizQuestionsToDb(selectedCourseId, editingQuestions);
+    setPdfFeedback(
+      `Saved ${editingQuestions.length} quiz questions for ${selectedTrack.level} (${selectedTrack.title})!`
+    );
+    await reloadCourses();
+  }
+
+  async function handleCertTemplateUpload(file: File | null) {
+    if (!file) return;
+    setUploadingCertTemplate(true);
+    setCertStudioFeedback(null);
+    const res = await uploadCertificateTemplateImage(file);
+    setUploadingCertTemplate(false);
+    const updated = { ...certTemplate, templateImageUrl: res.url };
+    setCertTemplate(updated);
+    await saveCertificateTemplateToDb(updated);
+    setCertStudioFeedback(res.message);
+  }
+
+  async function handleSaveCertTemplate() {
+    await saveCertificateTemplateToDb(certTemplate);
+    setCertStudioFeedback(
+      "Certificate template & student name coordinates saved! Completed students will receive this official template."
+    );
+    setTimeout(() => setCertStudioFeedback(null), 4000);
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
           <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
-            FOUNDER COURSE &amp; VIDEO STUDIO · public.courses &amp; public.course_lessons
+            FOUNDER COURSE, LEVEL PDF QUIZ &amp; CERTIFICATE STUDIO
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
-            Course Video Uploads &amp; Auto-Quiz Engine
+            Courses, 4-Level PDF Quizzes &amp; Certificate Designer
           </h1>
           <p className="text-xs sm:text-sm text-[#9aa4b5] mt-1">
-            Upload unlimited selling &amp; educational videos (12, 16, 20+ lessons per track) directly to Supabase Storage or via URL. Quizzes are auto-generated for every lesson you upload.
+            Name and upload your videos for Beginner, Intermediate, Essential, and Advanced tracks, upload the 4 Level PDFs to generate multi-question assessments, and customize your official completion certificate.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -159,10 +240,11 @@ export function AdminCoursesPage() {
         </div>
       </div>
 
-      {/* 4 Course Track Selector Cards */}
+      {/* 4 Course Track Selector Cards (Beginner, Intermediate, Essential, Advanced) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {tracks.map((track) => {
           const isSelected = track.id === selectedCourseId;
+          const pdfQuizCount = track.levelQuizQuestions?.length || 0;
           return (
             <button
               key={track.id}
@@ -170,6 +252,7 @@ export function AdminCoursesPage() {
               onClick={() => {
                 setSelectedCourseId(track.id);
                 setLessonNumber(track.lessons.length + 1);
+                setEditingQuestions(track.levelQuizQuestions || []);
                 setPreviewLesson(null);
               }}
               className={`p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
@@ -180,7 +263,7 @@ export function AdminCoursesPage() {
             >
               <div>
                 <div className="flex items-center justify-between text-xs text-[#9aa4b5] font-mono">
-                  <span>{track.level}</span>
+                  <span className="uppercase font-bold text-white">{track.level} Level</span>
                   <span className="text-[#ffde02] font-bold tabular-nums">
                     {track.lessons.length} Videos
                   </span>
@@ -190,18 +273,20 @@ export function AdminCoursesPage() {
               </div>
               <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-[11px] font-mono">
                 <span className={isSelected ? "text-[#ffde02] font-bold" : "text-[#7d8799]"}>
-                  {isSelected ? "ACTIVE TRACK" : "Click to Manage"}
+                  {track.levelPdfName ? `PDF: ${track.levelPdfName.slice(0, 14)}...` : "Upload Level PDF"}
                 </span>
-                <span className="text-white/70">Auto-Quiz Active</span>
+                <span className="text-emerald-400">
+                  {pdfQuizCount > 0 ? `${pdfQuizCount} PDF Qs` : "Auto-Quiz"}
+                </span>
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Main Split: Upload Form (Left) + Track Lessons List (Right) */}
+      {/* Main Split: Upload Video Lesson (Left) + Track Video Lessons Roster (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Upload New Lesson & Auto-Generate Quiz */}
+        {/* Left: Name & Upload Video Lesson */}
         <form
           onSubmit={handleSaveLesson}
           className="lg:col-span-5 bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4"
@@ -209,10 +294,10 @@ export function AdminCoursesPage() {
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-                TRACK: {selectedTrack.title.toUpperCase()}
+                {selectedTrack.level.toUpperCase()} TRACK · {selectedTrack.title.toUpperCase()}
               </span>
               <h2 className="text-lg font-bold text-white mt-0.5">
-                Upload Video Lesson #{lessonNumber}
+                Name &amp; Upload Video #{lessonNumber}
               </h2>
             </div>
             <Film size={20} className="text-[#ffde02]" />
@@ -268,21 +353,21 @@ export function AdminCoursesPage() {
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-              Lesson Title *
+              Video / Course Title *
             </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Institutional Order Block Execution"
+              placeholder="Name this video lesson..."
               className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
             />
           </div>
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-              Lesson Summary &amp; Selling Points
+              Lesson Summary
             </label>
             <textarea
               rows={2}
@@ -293,7 +378,6 @@ export function AdminCoursesPage() {
             />
           </div>
 
-          {/* Video Hosting Source Toggle */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
               Video Source (Supabase Bucket Upload or Direct URL)
@@ -352,21 +436,14 @@ export function AdminCoursesPage() {
             />
           </div>
 
-          {/* Key Takeaways for Auto-Quiz Generation */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5]">
-                Key Takeaways (Used to Auto-Generate Quiz)
-              </label>
-              <span className="text-[10px] font-mono text-[#ffde02] flex items-center gap-1">
-                <Sparkles size={11} /> Auto-Quiz Engine
-              </span>
-            </div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+              Key Takeaways (One per line)
+            </label>
             <textarea
-              rows={3}
+              rows={2}
               value={takeawaysInput}
               onChange={(e) => setTakeawaysInput(e.target.value)}
-              placeholder="One key takeaway per line..."
               className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
             />
           </div>
@@ -379,25 +456,25 @@ export function AdminCoursesPage() {
             <Plus size={15} />
             <span>
               {savingLesson
-                ? "Saving Video & Generating Quiz..."
-                : `Save Video Lesson #${lessonNumber} & Auto-Generate Quiz`}
+                ? "Publishing Video Lesson..."
+                : `Publish Video #${lessonNumber} to ${selectedTrack.title}`}
             </span>
           </button>
         </form>
 
-        {/* Right: Course Lessons List (Supports Unlimited 12+ Videos) */}
+        {/* Right: Uploaded Videos List for this Level Track */}
         <div className="lg:col-span-7 bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-                {selectedTrack.title} · LESSON ROSTER
+                {selectedTrack.level.toUpperCase()} LEVEL · {selectedTrack.title.toUpperCase()}
               </span>
               <h2 className="text-lg font-bold text-white">
                 {selectedTrack.lessons.length} Uploaded Video Lessons
               </h2>
             </div>
             <span className="text-xs text-[#9aa4b5] font-mono">
-              Supports 12, 16, 24+ lessons seamlessly
+              Zero demo lessons · Only your uploaded videos show to clients
             </span>
           </div>
 
@@ -434,145 +511,525 @@ export function AdminCoursesPage() {
                 )
               ) : (
                 <div className="p-4 rounded-lg bg-black/50 text-xs text-[#9aa4b5]">
-                  Built-in interactive academy video player active for this lesson. Upload a custom MP4/URL on the left to override.
+                  No video file URL set yet. Edit this lesson on the left to attach an MP4 file or stream URL.
                 </div>
               )}
-              <div className="text-[11px] text-[#cfd7e4]">
-                <strong className="text-white">
-                  Auto-Generated Quiz ({previewLesson.autoQuizQuestions.length} Questions):
-                </strong>
-                <ul className="mt-1 space-y-1 pl-4 list-disc text-[#9aa4b5]">
-                  {previewLesson.autoQuizQuestions.slice(0, 3).map((q) => (
-                    <li key={q.id}>{q.question}</li>
-                  ))}
-                </ul>
-              </div>
             </div>
           )}
 
-          <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1">
-            {selectedTrack.lessons.map((lesson) => (
-              <div
-                key={lesson.id}
-                className="p-3.5 rounded-xl bg-[#171b24] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-white/20 transition"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-[#ffde02]/15 text-[#ffde02] font-mono text-xs font-bold flex items-center justify-center shrink-0">
-                    {String(lesson.lessonNumber).padStart(2, "0")}
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-bold text-white">{lesson.title}</h4>
-                      <span className="text-[11px] font-mono text-[#9aa4b5]">
-                        · {lesson.durationMinutes} min · {lesson.pairTag}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#8c95a6] mt-0.5 line-clamp-1">
-                      {lesson.description}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] font-mono text-[#7d8799]">
-                      <span>
-                        Video: {lesson.videoUrl ? "Custom Video Uploaded" : "Academy HD Stream"}
-                      </span>
-                      <span>·</span>
-                      <span className="text-[#ffde02]">
-                        {lesson.autoQuizQuestions.length} Quiz Questions Auto-Generated
-                      </span>
+          {selectedTrack.lessons.length === 0 ? (
+            <div className="p-10 rounded-2xl bg-[#161a24] border border-dashed border-white/10 text-center space-y-2">
+              <Film size={28} className="mx-auto text-[#ffde02]" />
+              <h3 className="text-sm font-bold text-white">
+                No videos uploaded to {selectedTrack.title} ({selectedTrack.level}) yet
+              </h3>
+              <p className="text-xs text-[#8c95a6] max-w-md mx-auto">
+                Use the form on the left to name and upload your first video lesson for {selectedTrack.title}. Every video you upload immediately appears in the Client Course Library.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+              {selectedTrack.lessons.map((lesson) => (
+                <div
+                  key={lesson.id}
+                  className="p-3.5 rounded-xl bg-[#171b24] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-white/20 transition"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="w-8 h-8 rounded-lg bg-[#ffde02]/15 text-[#ffde02] font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                      {String(lesson.lessonNumber).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-white">{lesson.title}</h4>
+                        <span className="text-[11px] font-mono text-[#9aa4b5]">
+                          · {lesson.durationMinutes} min · {lesson.pairTag}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#8c95a6] mt-0.5 line-clamp-1">
+                        {lesson.description}
+                      </p>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewLesson(lesson)}
-                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-white transition cursor-pointer flex items-center gap-1"
-                  >
-                    <Play size={12} className="text-[#ffde02]" /> Preview
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLessonNumber(lesson.lessonNumber);
-                      setTitle(lesson.title);
-                      setDescription(lesson.description);
-                      setDurationMinutes(lesson.durationMinutes);
-                      setPairTag(lesson.pairTag);
-                      setVideoUrl(lesson.videoUrl);
-                      setTakeawaysInput(lesson.keyTakeaways.join("\n"));
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-[#cfd7e4] transition cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteLesson(lesson.id)}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#9aa4b5] hover:text-red-400 transition cursor-pointer"
-                    title="Delete lesson"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewLesson(lesson)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-white transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Play size={12} className="text-[#ffde02]" /> Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLessonNumber(lesson.lessonNumber);
+                        setTitle(lesson.title);
+                        setDescription(lesson.description);
+                        setDurationMinutes(lesson.durationMinutes);
+                        setPairTag(lesson.pairTag);
+                        setVideoUrl(lesson.videoUrl);
+                        setTakeawaysInput(lesson.keyTakeaways.join("\n"));
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-[#cfd7e4] transition cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteLesson(lesson.id)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#9aa4b5] hover:text-red-400 transition cursor-pointer"
+                      title="Delete lesson"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ============================================================================
+          SECTION 2: 4-LEVEL PDF UPLOAD & AI MULTI-QUESTION QUIZ GENERATOR
+         ============================================================================ */}
+      <div className="bg-[#12151d] border border-[#ffde02]/30 rounded-2xl p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02] flex items-center gap-1.5">
+              <Sparkles size={13} /> 4-LEVEL PDF AUTO-QUIZ ENGINE ·{" "}
+              {selectedTrack.level.toUpperCase()} PDF ({selectedTrack.title.toUpperCase()})
+            </span>
+            <h2 className="text-xl font-bold text-white mt-1">
+              Upload {selectedTrack.level} Level PDF &amp; Generate Multi-Question Quiz
+            </h2>
+            <p className="text-xs text-[#9aa4b5] mt-0.5">
+              Upload your PDF study guide for <strong>{selectedTrack.level}</strong> ({selectedTrack.title}). Our AI engine reads your PDF and generates a multi-question quiz specifically for this level.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {tracks.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSelectedCourseId(t.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                  t.id === selectedCourseId
+                    ? "bg-[#ffde02] text-black border-[#ffde02]"
+                    : "bg-white/5 text-[#9aa4b5] border-white/10 hover:text-white"
+                }`}
+              >
+                {t.level} PDF ({t.levelQuizQuestions?.length || 0} Qs)
+              </button>
             ))}
+          </div>
+        </div>
+
+        {pdfFeedback && (
+          <div className="p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+            <CheckCircle2 size={16} />
+            <span>{pdfFeedback}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <form onSubmit={handleGenerateLevelPdfQuiz} className="lg:col-span-5 space-y-4">
+            <div className="p-4 rounded-xl border border-dashed border-[#ffde02]/40 bg-[#161a24] space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <FileText size={16} className="text-[#ffde02]" />
+                <span>Select {selectedTrack.level} Level PDF Document</span>
+              </div>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffde02] file:text-black hover:file:bg-[#ffe540] cursor-pointer"
+              />
+              {selectedTrack.levelPdfName && (
+                <p className="text-[11px] font-mono text-emerald-400">
+                  Current Uploaded PDF: {selectedTrack.levelPdfName}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Level
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${selectedTrack.level} · ${selectedTrack.title}`}
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono opacity-80"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Number of Questions
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  max={12}
+                  value={pdfQuestionCount}
+                  onChange={(e) => setPdfQuestionCount(Number(e.target.value))}
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                Key Topics / Focus Notes from PDF (Optional)
+              </label>
+              <textarea
+                rows={3}
+                value={pdfCurriculumNotes}
+                onChange={(e) => setPdfCurriculumNotes(e.target.value)}
+                placeholder={`Paste key points or topics from your ${selectedTrack.level} PDF to emphasize in the generated questions...`}
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={generatingPdfQuiz}
+              className="w-full py-3.5 px-5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              <Sparkles size={15} />
+              <span>
+                {generatingPdfQuiz
+                  ? `Reading ${selectedTrack.level} PDF & Generating Questions...`
+                  : `Upload ${selectedTrack.level} PDF & Generate ${pdfQuestionCount} Quiz Questions`}
+              </span>
+            </button>
+          </form>
+
+          {/* Right: Generated Multi-Question Quiz Editor */}
+          <div className="lg:col-span-7 bg-[#161a24] border border-white/10 rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  {selectedTrack.level} Level Quiz Questions ({editingQuestions.length} Questions)
+                </h3>
+                <p className="text-[11px] text-[#8c95a6]">
+                  Students taking the {selectedTrack.title} quiz will answer all {editingQuestions.length} questions below.
+                </p>
+              </div>
+              {editingQuestions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEditedQuestions()}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#ffde02] text-black font-extrabold text-xs cursor-pointer"
+                >
+                  Save Quiz Changes
+                </button>
+              )}
+            </div>
+
+            {editingQuestions.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#8c95a6]">
+                Upload your <strong>{selectedTrack.level} PDF</strong> on the left and click Generate to create a multi-question quiz for this level.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                {editingQuestions.map((q, qIdx) => (
+                  <div
+                    key={q.id}
+                    className="p-3.5 rounded-xl bg-[#11141c] border border-white/10 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-mono font-bold text-[#ffde02]">
+                        Question {qIdx + 1} of {editingQuestions.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingQuestions(editingQuestions.filter((_, i) => i !== qIdx))
+                        }
+                        className="text-xs text-[#8c95a6] hover:text-red-400 cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={q.question}
+                      onChange={(e) => {
+                        const copy = [...editingQuestions];
+                        copy[qIdx] = { ...copy[qIdx], question: e.target.value };
+                        setEditingQuestions(copy);
+                      }}
+                      className="w-full bg-[#181c26] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white font-semibold"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {q.options.map((opt, optIdx) => (
+                        <div key={optIdx} className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name={`correct-${q.id}`}
+                            checked={q.correctIndex === optIdx}
+                            onChange={() => {
+                              const copy = [...editingQuestions];
+                              copy[qIdx] = { ...copy[qIdx], correctIndex: optIdx };
+                              setEditingQuestions(copy);
+                            }}
+                            className="accent-[#ffde02] cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={opt}
+                            onChange={(e) => {
+                              const copy = [...editingQuestions];
+                              const nextOpts = [...copy[qIdx].options];
+                              nextOpts[optIdx] = e.target.value;
+                              copy[qIdx] = { ...copy[qIdx], options: nextOpts };
+                              setEditingQuestions(copy);
+                            }}
+                            className={`w-full bg-[#181c26] border rounded-lg px-2.5 py-1 text-[11px] ${
+                              q.correctIndex === optIdx
+                                ? "border-emerald-500/50 text-emerald-300 font-bold"
+                                : "border-white/10 text-[#cfd7e4]"
+                            }`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Issued Course Completion Certificates Table */}
-      <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6">
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+      {/* ============================================================================
+          SECTION 3: OFFICIAL CERTIFICATE TEMPLATE DESIGNER (ADMIN UPLOAD + NAME PLACEMENT)
+         ============================================================================ */}
+      <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div>
             <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-              public.student_certificates · GRADUATION CREDENTIALS
+              ACADEMY CERTIFICATE STUDIO · AUTOMATIC STUDENT NAME RENDERER
             </span>
-            <h3 className="text-lg font-bold text-white mt-0.5">
-              Issued Course Completion Certificates ({certificates.length})
-            </h3>
+            <h2 className="text-xl font-bold text-white mt-0.5">
+              Official Certificate Template &amp; Student Name Position
+            </h2>
+            <p className="text-xs text-[#9aa4b5] mt-0.5">
+              Upload your official certificate template image and set where the student&apos;s name is written. When any student completes 100% of a course, their own name is automatically rendered on this certificate for download.
+            </p>
           </div>
-          <Award size={20} className="text-[#ffde02]" />
+          <Award size={22} className="text-[#ffde02]" />
         </div>
 
-        {certificates.length === 0 ? (
-          <p className="text-xs text-[#8c95a6] py-6 text-center">
-            When students complete 100% of any course track, their verifiable certificate appears here.
-          </p>
-        ) : (
-          <div className="table-scroll mt-4">
-            <table>
-              <thead>
-                <tr>
-                  <th>Certificate Code</th>
-                  <th>Student</th>
-                  <th>Course Track</th>
-                  <th>Quiz Average</th>
-                  <th>Issued Date</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {certificates.map((c) => (
-                  <tr key={c.id}>
-                    <td className="font-mono text-xs font-bold text-[#ffde02]">
-                      {c.certificateCode}
-                    </td>
-                    <td>
-                      <b>{c.studentName}</b>
-                      <small className="block text-xs text-[#8c95a6]">{c.studentEmail}</small>
-                    </td>
-                    <td>{c.courseTitle}</td>
-                    <td className="font-mono tabular-nums">{c.quizAverage}%</td>
-                    <td className="text-xs text-[#9aa4b5]">
-                      {new Date(c.issuedAt).toLocaleDateString()}
-                    </td>
-                    <td className="text-xs font-mono text-[#ffde02]">VERIFIED</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {certStudioFeedback && (
+          <div className="p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+            <CheckCircle2 size={16} />
+            <span>{certStudioFeedback}</span>
           </div>
         )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left 5 Cols: Template Image Upload & Coordinate Sliders */}
+          <div className="lg:col-span-5 space-y-4 bg-[#161a24] border border-white/10 rounded-xl p-5">
+            <div className="p-4 rounded-xl border border-dashed border-[#ffde02]/40 bg-[#12151d] text-center space-y-2">
+              <ImageIcon size={20} className="mx-auto text-[#ffde02]" />
+              <p className="text-xs font-bold text-white">
+                Upload Blank Certificate Template Image (PNG / JPG)
+              </p>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => void handleCertTemplateUpload(e.target.files?.[0] || null)}
+                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffde02] file:text-black hover:file:bg-[#ffe540] cursor-pointer"
+              />
+              {uploadingCertTemplate && (
+                <p className="text-[11px] font-mono text-[#ffde02]">Uploading template...</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                Sample Student Name for Live Preview
+              </label>
+              <input
+                type="text"
+                value={certSampleStudentName}
+                onChange={(e) => setCertSampleStudentName(e.target.value)}
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2 text-white text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Horizontal Position (X: {certTemplate.nameXPct}%)
+                </label>
+                <input
+                  type="range"
+                  min={15}
+                  max={85}
+                  value={certTemplate.nameXPct}
+                  onChange={(e) =>
+                    setCertTemplate({ ...certTemplate, nameXPct: Number(e.target.value) })
+                  }
+                  className="w-full accent-[#ffde02]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Vertical Position (Y: {certTemplate.nameYPct}%)
+                </label>
+                <input
+                  type="range"
+                  min={20}
+                  max={85}
+                  value={certTemplate.nameYPct}
+                  onChange={(e) =>
+                    setCertTemplate({ ...certTemplate, nameYPct: Number(e.target.value) })
+                  }
+                  className="w-full accent-[#ffde02]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Name Font Size ({certTemplate.fontSize}px)
+                </label>
+                <input
+                  type="number"
+                  min={20}
+                  max={80}
+                  value={certTemplate.fontSize}
+                  onChange={(e) =>
+                    setCertTemplate({ ...certTemplate, fontSize: Number(e.target.value) })
+                  }
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2 text-white text-xs font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Name Ink Color
+                </label>
+                <input
+                  type="color"
+                  value={certTemplate.fontColor}
+                  onChange={(e) =>
+                    setCertTemplate({ ...certTemplate, fontColor: e.target.value })
+                  }
+                  className="w-full h-9 bg-[#181c26] border border-white/10 rounded-xl px-2 py-1 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-[#cfd7e4] pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={certTemplate.showCourseTitle}
+                  onChange={(e) =>
+                    setCertTemplate({ ...certTemplate, showCourseTitle: e.target.checked })
+                  }
+                  className="accent-[#ffde02]"
+                />
+                <span>Print Course Track Title on Certificate</span>
+              </label>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => void handleSaveCertTemplate()}
+                className="flex-1 py-3 px-4 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                Save Certificate Template Settings
+              </button>
+              {certTemplate.templateImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const reset = { ...certTemplate, templateImageUrl: "" };
+                    setCertTemplate(reset);
+                    void saveCertificateTemplateToDb(reset);
+                  }}
+                  className="px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-[#9aa4b5] hover:text-white cursor-pointer"
+                >
+                  Reset Image
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right 7 Cols: Live Certificate Canvas Preview */}
+          <div className="lg:col-span-7 space-y-3">
+            <div className="flex items-center justify-between text-xs text-[#9aa4b5]">
+              <span>Live Student Certificate Preview ({certSampleStudentName})</span>
+              <span className="font-mono text-[#ffde02]">1600 × 1130 High-Res PNG</span>
+            </div>
+            <div className="rounded-2xl overflow-hidden border border-white/15 bg-[#090b10] shadow-2xl">
+              {certPreviewDataUrl ? (
+                <img
+                  src={certPreviewDataUrl}
+                  alt="Certificate Template Preview"
+                  className="w-full h-auto block"
+                />
+              ) : (
+                <div className="p-12 text-center text-xs text-[#8c95a6]">
+                  Generating certificate preview...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Issued Course Completion Certificates Table */}
+        <div className="pt-5 border-t border-white/10">
+          <h3 className="text-base font-bold text-white mb-3">
+            Issued Student Certificates ({certificates.length})
+          </h3>
+          {certificates.length === 0 ? (
+            <p className="text-xs text-[#8c95a6] py-4">
+              When students complete 100% of any course track, their verifiable certificate appears here.
+            </p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Certificate Code</th>
+                    <th>Student</th>
+                    <th>Course Track</th>
+                    <th>Quiz Average</th>
+                    <th>Issued Date</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {certificates.map((c) => (
+                    <tr key={c.id}>
+                      <td className="font-mono text-xs font-bold text-[#ffde02]">
+                        {c.certificateCode}
+                      </td>
+                      <td>
+                        <b>{c.studentName}</b>
+                        <small className="block text-xs text-[#8c95a6]">{c.studentEmail}</small>
+                      </td>
+                      <td>{c.courseTitle}</td>
+                      <td className="font-mono tabular-nums">{c.quizAverage}%</td>
+                      <td className="text-xs text-[#9aa4b5]">
+                        {new Date(c.issuedAt).toLocaleDateString()}
+                      </td>
+                      <td className="text-xs font-mono text-emerald-400">VERIFIED</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -584,15 +1041,24 @@ export function AdminCoursesPage() {
 
 export function AdminLiveStudioPage() {
   const [sessions, setSessions] = useState<LiveSessionItem[]>(getCachedLiveSessions());
-  const [activeSessionId, setActiveSessionId] = useState<string>("new-york");
+  const [activeSessionId, setActiveSessionId] = useState<string>(
+    getCachedLiveSessions()[0]?.id || ""
+  );
 
   // Schedule / Edit Form
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [scheduledDateInput, setScheduledDateInput] = useState("");
+  const [title, setTitle] = useState("New York Session: Live Market Breakdown & Execution");
+  const [description, setDescription] = useState(
+    "Live institutional chart analysis and execution on EUR/USD, GBP/USD, and XAU/USD."
+  );
+  const [scheduledDateInput, setScheduledDateInput] = useState(() => {
+    const dt = new Date(Date.now() + 2 * 3600 * 1000);
+    return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
   const [durationMinutes, setDurationMinutes] = useState(90);
   const [focusPair, setFocusPair] = useState("EUR/USD · XAU/USD · GBP/USD");
-  const [streamMode, setStreamMode] = useState<"screen_share" | "rtmp_hls" | "embed">("screen_share");
+  const [streamMode, setStreamMode] = useState<"screen_share" | "rtmp_hls" | "embed">(
+    "screen_share"
+  );
   const [rtmpIngestUrl, setRtmpIngestUrl] = useState("rtmp://live.candlesticks.academy/live");
   const [rtmpStreamKey, setRtmpStreamKey] = useState("csa_live_ny_qgcrue4rqj");
   const [streamPlaybackUrl, setStreamPlaybackUrl] = useState("");
@@ -609,13 +1075,16 @@ export function AdminLiveStudioPage() {
   const [chatMessages, setChatMessages] = useState<LiveChatMessageItem[]>([]);
   const [hostChatInput, setHostChatInput] = useState("");
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || null;
 
   useEffect(() => {
     void fetchLiveSessionsFromDb().then((data) => {
       setSessions(data);
       const found = data.find((s) => s.id === activeSessionId) || data[0];
-      if (found) populateForm(found);
+      if (found) {
+        setActiveSessionId(found.id);
+        populateForm(found);
+      }
     });
   }, []);
 
@@ -668,38 +1137,46 @@ export function AdminLiveStudioPage() {
 
   async function handleSaveSession(e: FormEvent) {
     e.preventDefault();
-    if (!activeSession) return;
+    const slug = activeSession?.id || `session-${Date.now().toString().slice(-5)}`;
     const parsedTime = scheduledDateInput
       ? new Date(scheduledDateInput).toISOString()
-      : activeSession.scheduledAt;
+      : new Date(Date.now() + 2 * 3600 * 1000).toISOString();
 
     const updated: LiveSessionItem = {
-      ...activeSession,
-      title: title.trim() || activeSession.title,
-      description: description.trim() || activeSession.description,
+      id: slug,
+      slug,
+      title: title.trim() || "Live Trading Session",
+      description: description.trim() || "Live market breakdown and execution.",
       scheduledAt: parsedTime,
       durationMinutes: Number(durationMinutes || 90),
-      focusPair: focusPair.trim() || "EUR/USD · XAU/USD",
+      status: activeSession?.status || "scheduled",
       streamMode,
       rtmpIngestUrl: rtmpIngestUrl.trim(),
       rtmpStreamKey: rtmpStreamKey.trim(),
       streamPlaybackUrl: streamPlaybackUrl.trim(),
+      screenShareSnapshot: activeSession?.screenShareSnapshot || "",
+      focusPair: focusPair.trim() || "EUR/USD · XAU/USD",
+      viewersCount: activeSession?.viewersCount || 1,
+      pinnedResources: activeSession?.pinnedResources || [],
     };
 
     await saveLiveSessionInDb(updated);
     const nextList = await fetchLiveSessionsFromDb();
     setSessions(nextList);
-    setStudioFeedback(`Session "${updated.title}" saved & countdown synced to all student dashboards!`);
+    setActiveSessionId(updated.id);
+    setStudioFeedback(
+      `Session "${updated.title}" scheduled & synced to all student dashboards!`
+    );
     setTimeout(() => setStudioFeedback(null), 4000);
   }
 
   async function handleScheduleNewSession() {
     const slug = `session-${Date.now().toString().slice(-5)}`;
-    const future = new Date(Date.now() + 4 * 3600 * 1000).toISOString();
+    const future = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
     const created: LiveSessionItem = {
       id: slug,
       slug,
-      title: "Live London / NY Overlap Execution Room",
+      title: "New York Open Live Execution Room",
       description: "Real-time chart breakdown, liquidity mapping, and live trade execution.",
       scheduledAt: future,
       durationMinutes: 90,
@@ -716,11 +1193,31 @@ export function AdminLiveStudioPage() {
     const nextList = await fetchLiveSessionsFromDb();
     setSessions(nextList);
     setActiveSessionId(created.id);
+    populateForm(created);
   }
 
-  // Start Live Browser Screen Sharing (WebRTC getDisplayMedia + Live Frame Relay)
   async function handleStartScreenShare() {
-    if (!activeSession) return;
+    let targetSession = activeSession;
+    if (!targetSession) {
+      const slug = `live-${Date.now().toString().slice(-5)}`;
+      targetSession = {
+        id: slug,
+        slug,
+        title: title.trim() || "Live Market Broadcast",
+        description: description.trim() || "Live trading session with Pastor Mike.",
+        scheduledAt: new Date().toISOString(),
+        durationMinutes: Number(durationMinutes || 90),
+        status: "live",
+        streamMode: "screen_share",
+        rtmpIngestUrl,
+        rtmpStreamKey,
+        streamPlaybackUrl,
+        focusPair,
+        viewersCount: 1,
+        pinnedResources: [],
+      };
+    }
+
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 15 },
@@ -734,17 +1231,16 @@ export function AdminLiveStudioPage() {
         void videoPreviewRef.current.play();
       }
 
-      // Mark session as LIVE in Supabase
       const liveSession: LiveSessionItem = {
-        ...activeSession,
+        ...targetSession,
         status: "live",
         streamMode: "screen_share",
       };
       await saveLiveSessionInDb(liveSession);
       setSessions(getCachedLiveSessions());
+      setActiveSessionId(liveSession.id);
       setStudioFeedback("You are LIVE! Your screen is now broadcasting to students in the Live Room.");
 
-      // Capture periodic compressed frame snapshots so students on any tab/device see the live shared screen
       const canvas = document.createElement("canvas");
       canvas.width = 960;
       canvas.height = 540;
@@ -758,7 +1254,7 @@ export function AdminLiveStudioPage() {
             const bc = new BroadcastChannel("candlesticks_live_stream");
             bc.postMessage({
               type: "SCREEN_FRAME",
-              sessionId: activeSession.id,
+              sessionId: liveSession.id,
               frame: dataUrl,
             });
             bc.close();
@@ -776,7 +1272,7 @@ export function AdminLiveStudioPage() {
       stream.getVideoTracks()[0].onended = () => {
         void handleStopLiveBroadcast();
       };
-    } catch (err) {
+    } catch {
       setStudioFeedback(
         "Screen share permission was cancelled or blocked by browser. You can also toggle status to LIVE using RTMP or stream URL."
       );
@@ -835,7 +1331,7 @@ export function AdminLiveStudioPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
           <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
-            LIVE BROADCAST &amp; RTMP STUDIO · public.live_sessions
+            LIVE BROADCAST &amp; RTMP STUDIO
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
             Live Trading Studio, Screen Share &amp; Chat
@@ -850,7 +1346,7 @@ export function AdminLiveStudioPage() {
             onClick={() => void handleScheduleNewSession()}
             className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus size={14} /> New Live Session
+            <Plus size={14} /> Schedule New Session
           </button>
           {activeSession && (
             <Link
@@ -864,28 +1360,28 @@ export function AdminLiveStudioPage() {
       </div>
 
       {/* Session Selector Tabs */}
-      <div className="flex flex-wrap gap-3">
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            onClick={() => setActiveSessionId(s.id)}
-            className={`px-4 py-3 rounded-xl border cursor-pointer transition flex items-center gap-3 ${
-              s.id === activeSessionId
-                ? "bg-[#171c26] border-[#ffde02] text-white"
-                : "bg-[#12151d] border-white/10 text-[#9aa4b5] hover:text-white"
-            }`}
-          >
-            <Radio
-              size={15}
-              className={s.status === "live" ? "text-red-400 animate-pulse" : "text-[#ffde02]"}
-            />
-            <div>
-              <div className="text-xs font-bold text-white">{s.title}</div>
-              <div className="text-[10px] font-mono text-[#8c95a6]">
-                {s.status.toUpperCase()} · {new Date(s.scheduledAt).toLocaleString()}
+      {sessions.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => setActiveSessionId(s.id)}
+              className={`px-4 py-3 rounded-xl border cursor-pointer transition flex items-center gap-3 ${
+                s.id === activeSessionId
+                  ? "bg-[#171c26] border-[#ffde02] text-white"
+                  : "bg-[#12151d] border-white/10 text-[#9aa4b5] hover:text-white"
+              }`}
+            >
+              <Radio
+                size={15}
+                className={s.status === "live" ? "text-red-400 animate-pulse" : "text-[#ffde02]"}
+              />
+              <div>
+                <div className="text-xs font-bold text-white">{s.title}</div>
+                <div className="text-[10px] font-mono text-[#8c95a6]">
+                  {s.status.toUpperCase()} · {new Date(s.scheduledAt).toLocaleString()}
+                </div>
               </div>
-            </div>
-            {sessions.length > 1 && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -893,7 +1389,7 @@ export function AdminLiveStudioPage() {
                   void deleteLiveSessionFromDb(s.id).then(() => {
                     const rem = getCachedLiveSessions();
                     setSessions(rem);
-                    if (rem[0]) setActiveSessionId(rem[0].id);
+                    setActiveSessionId(rem[0]?.id || "");
                   });
                 }}
                 className="text-[#7d8799] hover:text-red-400 p-1"
@@ -901,10 +1397,10 @@ export function AdminLiveStudioPage() {
               >
                 <Trash2 size={13} />
               </button>
-            )}
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {studioFeedback && (
         <div className="p-4 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
@@ -916,12 +1412,11 @@ export function AdminLiveStudioPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left 7 Columns: Broadcast Monitor + Session Settings + RTMP Config */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Live Screen Share & Broadcast Monitor */}
           <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-                  LIVE BROADCAST MONITOR · STATUS: {activeSession?.status.toUpperCase()}
+                  LIVE BROADCAST MONITOR · STATUS: {(activeSession?.status || "READY").toUpperCase()}
                 </span>
                 <h2 className="text-lg font-bold text-white mt-0.5">
                   Screen Share &amp; RTMP Stream Deck
@@ -947,7 +1442,7 @@ export function AdminLiveStudioPage() {
                   </button>
                 )}
 
-                {activeSession?.status !== "live" ? (
+                {activeSession && activeSession.status !== "live" && (
                   <button
                     type="button"
                     onClick={() => void handleToggleLiveStatus("live")}
@@ -955,7 +1450,8 @@ export function AdminLiveStudioPage() {
                   >
                     Set Status: LIVE NOW
                   </button>
-                ) : (
+                )}
+                {activeSession && activeSession.status === "live" && (
                   <button
                     type="button"
                     onClick={() => void handleToggleLiveStatus("scheduled")}
@@ -967,7 +1463,6 @@ export function AdminLiveStudioPage() {
               </div>
             </div>
 
-            {/* Video Preview Surface */}
             <div className="relative w-full aspect-video rounded-xl bg-[#090b10] border border-white/10 overflow-hidden flex items-center justify-center">
               <video
                 ref={videoPreviewRef}
@@ -989,13 +1484,12 @@ export function AdminLiveStudioPage() {
             </div>
           </div>
 
-          {/* Session Schedule & RTMP Configuration Form */}
           <form
             onSubmit={handleSaveSession}
             className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4"
           >
             <h3 className="text-base font-bold text-white border-b border-white/10 pb-3">
-              Session Schedule, Countdown &amp; RTMP Stream Settings
+              {activeSession ? "Edit Scheduled Live Session" : "Schedule a New Live Session"}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1062,7 +1556,6 @@ export function AdminLiveStudioPage() {
               />
             </div>
 
-            {/* RTMP Server URL & Stream Key */}
             <div className="p-4 rounded-xl bg-[#161a24] border border-white/10 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold uppercase text-[#ffde02]">
@@ -1124,7 +1617,9 @@ export function AdminLiveStudioPage() {
               type="submit"
               className="w-full py-3.5 px-5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer"
             >
-              Save Session &amp; Update Student Countdown Clock
+              {activeSession
+                ? "Save Session & Update Student Countdown Clock"
+                : "Schedule Live Session & Publish to Student Dashboards"}
             </button>
           </form>
         </div>
@@ -1134,7 +1629,7 @@ export function AdminLiveStudioPage() {
           <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-                public.live_session_messages · REAL-TIME CHAT
+                REAL-TIME ROOM CHAT
               </span>
               <h3 className="text-base font-bold text-white">
                 Live Session Chat &amp; Moderation ({chatMessages.length})
@@ -1153,70 +1648,76 @@ export function AdminLiveStudioPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {chatMessages.map((m) => (
-              <div
-                key={m.id}
-                className={`p-3 rounded-xl border text-xs ${
-                  m.isHost
-                    ? "bg-[#ffde02]/10 border-[#ffde02]/40"
-                    : m.isPinned
-                    ? "bg-white/10 border-[#ffde02]/30"
-                    : "bg-[#171b24] border-white/10"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {m.senderAvatar ? (
-                      <img
-                        src={m.senderAvatar}
-                        alt={m.senderName}
-                        referrerPolicy="no-referrer"
-                        className="w-6 h-6 rounded-full object-cover border border-[#ffde02]/40"
-                      />
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-white/10 text-[#ffde02] font-bold text-[10px] flex items-center justify-center">
-                        {m.senderName.slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                    <strong className={m.isHost ? "text-[#ffde02]" : "text-white"}>
-                      {m.senderName}
-                    </strong>
-                    {m.isPinned && (
-                      <span className="text-[10px] font-mono text-[#ffde02]">· PINNED</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        activeSession &&
-                        void togglePinSessionChatMessageInDb(activeSession.id, m.id).then(() =>
-                          fetchSessionChatMessagesFromDb(activeSession.id).then(setChatMessages)
-                        )
-                      }
-                      className="text-[#8c95a6] hover:text-[#ffde02] p-1 cursor-pointer"
-                      title="Pin / Unpin message"
-                    >
-                      <Pin size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        activeSession &&
-                        void deleteSessionChatMessageInDb(activeSession.id, m.id).then(() =>
-                          fetchSessionChatMessagesFromDb(activeSession.id).then(setChatMessages)
-                        )
-                      }
-                      className="text-[#8c95a6] hover:text-red-400 p-1 cursor-pointer"
-                      title="Delete message"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[#d6dde8] mt-1.5 leading-relaxed">{m.message}</p>
+            {chatMessages.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#8c95a6]">
+                No chat messages yet for this session. Send a welcome message below!
               </div>
-            ))}
+            ) : (
+              chatMessages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`p-3 rounded-xl border text-xs ${
+                    m.isHost
+                      ? "bg-[#ffde02]/10 border-[#ffde02]/40"
+                      : m.isPinned
+                      ? "bg-white/10 border-[#ffde02]/30"
+                      : "bg-[#171b24] border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {m.senderAvatar ? (
+                        <img
+                          src={m.senderAvatar}
+                          alt={m.senderName}
+                          referrerPolicy="no-referrer"
+                          className="w-6 h-6 rounded-full object-cover border border-[#ffde02]/40"
+                        />
+                      ) : (
+                        <span className="w-6 h-6 rounded-full bg-white/10 text-[#ffde02] font-bold text-[10px] flex items-center justify-center">
+                          {m.senderName.slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                      <strong className={m.isHost ? "text-[#ffde02]" : "text-white"}>
+                        {m.senderName}
+                      </strong>
+                      {m.isPinned && (
+                        <span className="text-[10px] font-mono text-[#ffde02]">· PINNED</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          activeSession &&
+                          void togglePinSessionChatMessageInDb(activeSession.id, m.id).then(() =>
+                            fetchSessionChatMessagesFromDb(activeSession.id).then(setChatMessages)
+                          )
+                        }
+                        className="text-[#8c95a6] hover:text-[#ffde02] p-1 cursor-pointer"
+                        title="Pin / Unpin message"
+                      >
+                        <Pin size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          activeSession &&
+                          void deleteSessionChatMessageInDb(activeSession.id, m.id).then(() =>
+                            fetchSessionChatMessagesFromDb(activeSession.id).then(setChatMessages)
+                          )
+                        }
+                        className="text-[#8c95a6] hover:text-red-400 p-1 cursor-pointer"
+                        title="Delete message"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[#d6dde8] mt-1.5 leading-relaxed">{m.message}</p>
+                </div>
+              ))
+            )}
           </div>
 
           <form onSubmit={handleSendHostMessage} className="mt-4 pt-3 border-t border-white/10 flex gap-2">
@@ -1229,7 +1730,8 @@ export function AdminLiveStudioPage() {
             />
             <button
               type="submit"
-              className="px-4 py-2.5 rounded-xl bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
+              disabled={!activeSession}
+              className="px-4 py-2.5 rounded-xl bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
             >
               <Send size={13} /> Send
             </button>
@@ -1265,7 +1767,6 @@ export function AdminMentorInboxPage() {
     return () => window.removeEventListener("candlesticks_portal_data_updated", sync);
   }, []);
 
-  // Group threads by studentEmail
   const studentThreads = Array.from(
     messages.reduce((map, msg) => {
       const existing = map.get(msg.studentEmail) || [];
@@ -1302,7 +1803,7 @@ export function AdminMentorInboxPage() {
       <div className="flex items-center justify-between border-b border-white/10 pb-5">
         <div>
           <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
-            DIRECT MENTORSHIP INBOX · public.mentor_messages
+            DIRECT MENTORSHIP INBOX
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
             Student Mentor Q&amp;A &amp; Support Threads
@@ -1428,4 +1929,3 @@ export function AdminMentorInboxPage() {
 }
 
 export const AdminLiveSessionsPage = AdminLiveStudioPage;
-

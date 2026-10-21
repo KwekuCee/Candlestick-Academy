@@ -26,6 +26,8 @@ import {
   verifyExnessPartnerAccount,
 } from "./exnessStore";
 import {
+  CertificateTemplateConfig,
+  ClientNotificationItem,
   CourseLessonItem,
   CourseTrack,
   DASHBOARD_UPGRADE_SQL,
@@ -34,14 +36,20 @@ import {
   LiveSessionItem,
   MentorMessageItem,
   QuizAttemptItem,
+  SignalTpLevel,
   StudentCertificateItem,
   StudentTradeItem,
   TradingSignalItem,
   addStudentTradeInDb,
   calculateLotSize,
+  createClientNotificationInDb,
   createSignalInDb,
   deleteSignalFromDb,
+  evaluateSignalsAgainstMarketPrices,
+  fetchCertificateTemplateFromDb,
+  fetchClientNotificationsFromDb,
   fetchCoursesWithLessonsFromDb,
+  fetchLiveMarketPrices,
   fetchLiveSessionsFromDb,
   fetchMentorMessagesFromDb,
   fetchSessionChatMessagesFromDb,
@@ -52,11 +60,16 @@ import {
   fetchStudentTradesFromDb,
   formatCountdown,
   generateQuizForCourse,
+  getCachedCertificateTemplate,
+  getCachedClientNotifications,
   getCachedCourses,
   getCachedLiveSessions,
+  getCachedMarketPrices,
   getCachedSignals,
   getStudentProgressMetrics,
   issueStudentCertificateInDb,
+  markAllNotificationsReadInDb,
+  markNotificationReadInDb,
   recordQuizAttemptInDb,
   revokeStudentCertificateInDb,
   sendMentorMessageInDb,
@@ -569,12 +582,81 @@ export function PortalLayout() {
   const admin = loc.pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
   const student = useCurrentStudent();
+  const syncTick = usePortalDataSync();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Interactive Alert Bell Popover state
+  const [bellOpen, setBellOpen] = useState(false);
+  const [notifications, setNotifications] = useState<ClientNotificationItem[]>([]);
+  const bellRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setOpen(false);
+    setBellOpen(false);
     window.scrollTo(0, 0);
   }, [loc.pathname]);
+
+  // Load client notifications & audit log alerts pertaining to this client
+  useEffect(() => {
+    const targetEmail = admin ? "ALL" : student.email;
+    void fetchClientNotificationsFromDb(targetEmail, student.exnessId).then(setNotifications);
+  }, [admin, student.email, student.exnessId, syncTick]);
+
+  // Live Market Price Monitor: checks active Admin signals against real market feed for TP1-TP5 & SL hits
+  useEffect(() => {
+    let mounted = true;
+    const checkPrices = async () => {
+      if (!mounted) return;
+      await evaluateSignalsAgainstMarketPrices();
+      if (!mounted) return;
+      const targetEmail = admin ? "ALL" : student.email;
+      const list = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+      if (mounted) setNotifications(list);
+    };
+    void checkPrices();
+    const interval = setInterval(() => {
+      void checkPrices();
+    }, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [admin, student.email, student.exnessId]);
+
+  // Close bell popover on outside click
+  useEffect(() => {
+    const handleClickOutside = (ev: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(ev.target as Node)) {
+        setBellOpen(false);
+      }
+    };
+    if (bellOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [bellOpen]);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  async function handleMarkAllRead() {
+    const targetEmail = admin ? "ALL" : student.email;
+    await markAllNotificationsReadInDb(targetEmail, student.exnessId);
+    const updated = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+    setNotifications(updated);
+  }
+
+  async function handleNotificationClick(item: ClientNotificationItem) {
+    if (!item.isRead) {
+      await markNotificationReadInDb(item.id);
+      const targetEmail = admin ? "ALL" : student.email;
+      const updated = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+      setNotifications(updated);
+    }
+    setBellOpen(false);
+    if (item.actionUrl) {
+      nav(item.actionUrl);
+    }
+  }
 
   function handleLogout() {
     logoutCurrentUser();
@@ -678,11 +760,112 @@ export function PortalLayout() {
             />
             <kbd>↵</kbd>
           </form>
-          <Link to={admin ? "/admin/messages" : "/signals"} className="notify" title="Notifications & Signals">
-            <Icon name="bell" />
-            <i />
-          </Link>
-          <Link to={admin ? "/admin" : "/settings"} title="Profile & Settings">
+
+          {/* Interactive Alert Bell Linked to Client Audit Logs & Trade Events */}
+          <div className="relative" ref={bellRef}>
+            <button
+              type="button"
+              onClick={() => setBellOpen((prev) => !prev)}
+              className="notify relative cursor-pointer"
+              title="Client Alerts, Trade Notifications & Audit Feed"
+            >
+              <Icon name="bell" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f6465d] text-white text-[10px] font-mono font-extrabold flex items-center justify-center border border-[#0b0e14]">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {bellOpen && (
+              <div className="absolute right-0 mt-2.5 w-[340px] sm:w-[390px] rounded-2xl bg-[#11151f] border border-white/15 shadow-2xl z-50 overflow-hidden">
+                <div className="px-4 py-3.5 bg-[#161b26] border-b border-white/10 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] block">
+                      CLIENT AUDIT &amp; TRADE ALERTS
+                    </span>
+                    <h4 className="text-xs font-extrabold text-white mt-0.5">
+                      Notifications ({unreadCount} unread)
+                    </h4>
+                  </div>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleMarkAllRead()}
+                      className="px-2.5 py-1 rounded-lg bg-[#ffde02]/15 hover:bg-[#ffde02]/25 border border-[#ffde02]/30 text-[10px] font-bold text-[#ffde02] transition cursor-pointer"
+                    >
+                      Mark all as read
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-[360px] overflow-y-auto divide-y divide-white/10">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center space-y-1.5">
+                      <Bell size={22} className="mx-auto text-[#7f8a9d]" />
+                      <p className="text-xs font-bold text-white">No alerts for your account yet</p>
+                      <p className="text-[11px] text-[#8c95a6]">
+                        Whenever you copy a trade, a signal hits TP1–TP5, or an account audit event occurs, it will appear right here.
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => void handleNotificationClick(item)}
+                        className={`w-full text-left px-4 py-3 transition flex items-start gap-3 cursor-pointer ${
+                          item.isRead
+                            ? "bg-transparent hover:bg-white/5 opacity-75"
+                            : "bg-[#ffde02]/[0.06] hover:bg-[#ffde02]/[0.12]"
+                        }`}
+                      >
+                        <span
+                          className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
+                            item.isRead
+                              ? "bg-white/20"
+                              : item.category === "tp_hit"
+                              ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                              : item.category === "trade"
+                              ? "bg-[#ffde02] shadow-[0_0_8px_#ffde02]"
+                              : "bg-sky-400"
+                          }`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-white truncate">
+                              {item.title}
+                            </span>
+                            <span className="text-[10px] font-mono text-[#7f8a9d] shrink-0">
+                              {new Date(item.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#b4bccb] leading-relaxed mt-0.5 line-clamp-2">
+                            {item.message}
+                          </p>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/5 text-[#9aa4b5]">
+                              {item.category.replace("_", " ")}
+                            </span>
+                            {!item.isRead && (
+                              <span className="text-[10px] font-bold text-[#ffde02]">
+                                Click to mark read →
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Link to={admin ? "/admin" : "/settings"} title="Profile & Settings" className="shrink-0">
             {admin ? (
               <img
                 src="/ceo.png"
@@ -1122,43 +1305,56 @@ export function DashboardPage() {
           <Card>
             <div className="card-title">
               <p className="p-eyebrow">NEXT LIVE SESSION · RTMP &amp; SCREEN SHARE</p>
-              <Badge tone={isSessionLiveNow ? "green" : "red"}>
-                {isSessionLiveNow ? "● LIVE NOW" : `LIVE IN ${countdownText}`}
+              <Badge tone={isSessionLiveNow ? "green" : featuredSession ? "red" : "gray"}>
+                {isSessionLiveNow
+                  ? "● LIVE NOW"
+                  : featuredSession
+                  ? `LIVE IN ${countdownText}`
+                  : "AWAITING SCHEDULE"}
               </Badge>
             </div>
-            <h2>{featuredSession?.title || "New York Session: Live Market Breakdown"}</h2>
-            <p className="text-xs text-[#9aa4b5] mt-1">
-              {featuredSession?.description || "Live institutional order-flow and screen-share execution."}
-            </p>
-            <p className="mt-2">
-              <Icon name="calendar" />{" "}
-              {featuredSession
-                ? new Date(featuredSession.scheduledAt).toLocaleString([], {
+            {featuredSession ? (
+              <>
+                <h2>{featuredSession.title}</h2>
+                <p className="text-xs text-[#9aa4b5] mt-1">{featuredSession.description}</p>
+                <p className="mt-2">
+                  <Icon name="calendar" />{" "}
+                  {new Date(featuredSession.scheduledAt).toLocaleString([], {
                     weekday: "short",
                     month: "short",
                     day: "numeric",
                     hour: "2-digit",
                     minute: "2-digit",
-                  })
-                : "Scheduled Daily"}{" "}
-              · {featuredSession?.focusPair || "EUR/USD · XAU/USD"}
-            </p>
-            {isDepositCompleted ? (
-              <Button
-                onClick={() =>
-                  nav(`/sessions/live/${featuredSession?.id || "new-york-live"}`)
-                }
-              >
-                <Icon name="video" />{" "}
-                {isSessionLiveNow ? "Join Live Stream & Chat Now" : "Enter Live Waiting Room"}
-              </Button>
+                  })}{" "}
+                  · {featuredSession.focusPair}
+                </p>
+                {isDepositCompleted ? (
+                  <Button onClick={() => nav(`/sessions/live/${featuredSession.id}`)}>
+                    <Icon name="video" />{" "}
+                    {isSessionLiveNow ? "Join Live Stream & Chat Now" : "Enter Live Waiting Room"}
+                  </Button>
+                ) : (
+                  <button
+                    onClick={() => nav("/sessions")}
+                    className="mt-3 px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <Lock size={13} className="text-[#ffde02]" /> Locked ($50 Deposit Required)
+                  </button>
+                )}
+              </>
             ) : (
-              <button
-                onClick={() => nav("/sessions")}
-                className="mt-3 px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer"
-              >
-                <Lock size={13} className="text-[#ffde02]" /> Locked ($50 Deposit Required)
-              </button>
+              <div className="py-3 space-y-2">
+                <h2 className="text-base font-bold text-white">No Live Broadcast Scheduled Yet</h2>
+                <p className="text-xs text-[#9aa4b5]">
+                  When Pastor Mike schedules a London or New York live session or goes live in the Admin Broadcast Studio, the real-time countdown and stream link will appear right here.
+                </p>
+                <Link
+                  to="/sessions"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline pt-1"
+                >
+                  Open Live Sessions Room <ArrowRight size={13} />
+                </Link>
+              </div>
             )}
           </Card>
 
@@ -1166,38 +1362,86 @@ export function DashboardPage() {
             <div className="flex items-center justify-between">
               <p className="p-eyebrow">LATEST ADMIN SIGNAL</p>
               <span className="text-[10px] font-mono text-[#8c95a6]">
-                {latestSignal?.timeframe || "H1 / M15"}
+                {latestSignal?.timeframe || "REAL-TIME FEED"}
               </span>
             </div>
-            <h2>
-              {latestSignal?.pair || "GBP / USD"}{" "}
-              <Badge tone={latestSignal?.direction === "SELL" ? "red" : "green"}>
-                {latestSignal?.direction || "BUY"}
-              </Badge>
-              <Badge tone="yellow">{latestSignal?.status || "ACTIVE"}</Badge>
-            </h2>
-            {isDepositCompleted && latestSignal ? (
+            {latestSignal ? (
               <>
-                <div>
-                  <span>
-                    ENTRY<b>{latestSignal.entry}</b>
-                  </span>
-                  <span>
-                    STOP LOSS<b className="negative">{latestSignal.sl}</b>
-                  </span>
-                  <span>
-                    TAKE PROFIT<b className="positive">{latestSignal.tp}</b>
-                  </span>
-                </div>
-                <Link to={`/signals/${latestSignal.id}`}>
-                  View signal &amp; lot calculator <Icon name="arrow" />
-                </Link>
+                <h2>
+                  {latestSignal.pair}{" "}
+                  <Badge tone={latestSignal.direction === "SELL" ? "red" : "green"}>
+                    {latestSignal.direction}
+                  </Badge>
+                  <Badge
+                    tone={
+                      latestSignal.status === "ALL TPs HIT" || latestSignal.status === "HIT TP"
+                        ? "green"
+                        : latestSignal.status === "PARTIAL TP"
+                        ? "yellow"
+                        : latestSignal.status === "HIT SL"
+                        ? "red"
+                        : "yellow"
+                    }
+                  >
+                    {latestSignal.status}
+                  </Badge>
+                </h2>
+                {isDepositCompleted ? (
+                  <>
+                    <div>
+                      <span>
+                        ENTRY<b>{latestSignal.entry}</b>
+                      </span>
+                      <span>
+                        STOP LOSS<b className="negative">{latestSignal.sl}</b>
+                      </span>
+                      <span>
+                        TP1 TARGET<b className="positive">{latestSignal.tp}</b>
+                      </span>
+                    </div>
+                    {latestSignal.tpLevels && latestSignal.tpLevels.length > 1 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {latestSignal.tpLevels.map((lvl) => (
+                          <span
+                            key={lvl.level}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                              lvl.hit
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                : "bg-white/5 text-[#9aa4b5] border-white/10"
+                            }`}
+                          >
+                            {lvl.label}: {lvl.price} {lvl.hit ? "✓ HIT" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <Link to={`/signals/${latestSignal.id}`}>
+                      Copy trade &amp; lot calculator <Icon name="arrow" />
+                    </Link>
+                  </>
+                ) : (
+                  <div className="pt-2 text-xs text-[#8f98a8] flex items-center justify-between">
+                    <span>SL/TP levels hidden</span>
+                    <Link
+                      to="/signals"
+                      className="text-[#ffde02] hover:underline flex items-center gap-1 font-bold"
+                    >
+                      Unlock with $50 Deposit <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                )}
               </>
             ) : (
-              <div className="pt-2 text-xs text-[#8f98a8] flex items-center justify-between">
-                <span>SL/TP levels hidden</span>
-                <Link to="/signals" className="text-[#ffde02] hover:underline flex items-center gap-1 font-bold">
-                  Unlock with $50 Deposit <ArrowRight size={13} />
+              <div className="py-3 space-y-2">
+                <h2 className="text-base font-bold text-white">No Admin Signals Posted Yet</h2>
+                <p className="text-xs text-[#9aa4b5]">
+                  Only real setups published by Pastor Mike in the Admin Console appear here, complete with live market TP1–TP5 tracking.
+                </p>
+                <Link
+                  to="/signals"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline pt-1"
+                >
+                  Open VIP Signal Feed <ArrowRight size={13} />
                 </Link>
               </div>
             )}
@@ -1205,43 +1449,73 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* High-Impact Forex Economic Calendar Strip */}
-      <Card className="mt-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-white/10">
-          <div>
-            <p className="p-eyebrow">HIGH-IMPACT MACROECONOMIC CALENDAR</p>
-            <h2 className="text-lg font-bold text-white mt-0.5">
-              Upcoming Red-Folder Volatility Events
-            </h2>
+      {/* Redesigned High-Impact Forex Macroeconomic Calendar Card */}
+      <section className="mt-6 rounded-2xl bg-gradient-to-b from-[#151924] to-[#10141d] border border-white/10 p-6 sm:p-7 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-white/10">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <span className="w-11 h-11 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center shrink-0">
+              <Calendar size={20} />
+            </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffde02]">
+                  HIGH-IMPACT MACROECONOMIC CALENDAR
+                </span>
+                <span className="hidden sm:inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-snug m-0">
+                Upcoming Red-Folder Volatility Events
+              </h3>
+            </div>
           </div>
-          <span className="text-xs font-mono text-[#ffde02]">
-            Protect stops 15m before High-Impact releases
-          </span>
+
+          <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 self-start md:self-auto">
+            <ShieldAlert size={15} className="text-[#ffde02] shrink-0" />
+            <span className="text-xs font-mono font-bold text-[#ffde02]">
+              Protect stops 15m before red-folder releases
+            </span>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-4">
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-5">
           {ECONOMIC_CALENDAR_EVENTS.map((ev) => (
             <div
               key={ev.id}
-              className="p-3.5 rounded-xl bg-[#141821] border border-white/10 flex flex-col justify-between gap-2"
+              className="p-4 rounded-xl bg-[#0d1017] hover:bg-[#131822] border border-white/10 hover:border-[#ffde02]/30 transition flex flex-col justify-between gap-3.5"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-extrabold text-white bg-white/10 px-2 py-0.5 rounded">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-mono font-extrabold text-white bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg tracking-wider">
                   {ev.currency}
                 </span>
-                <Badge tone={ev.impact === "HIGH" ? "red" : "yellow"}>{ev.impact}</Badge>
+                <Badge tone={ev.impact === "HIGH" ? "red" : "yellow"}>
+                  {ev.impact === "HIGH" ? "● HIGH IMPACT" : "MEDIUM"}
+                </Badge>
               </div>
-              <div>
-                <div className="text-xs font-bold text-white leading-snug">{ev.event}</div>
-                <div className="text-[11px] font-mono text-[#8c95a6] mt-1">{ev.timeGmt}</div>
+
+              <div className="space-y-1.5 my-0.5">
+                <div className="text-[13px] font-bold text-white leading-snug min-h-[36px]">
+                  {ev.event}
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[#9aa4b5] bg-white/5 px-2 py-0.5 rounded">
+                  <Clock size={11} className="text-[#ffde02]" />
+                  <span>{ev.timeGmt}</span>
+                </div>
               </div>
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-[#9aa4b5]">
-                <span>Fcst: <strong className="text-white">{ev.forecast}</strong></span>
-                <span>Prev: {ev.previous}</span>
+
+              <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-[11px] font-mono">
+                <div className="bg-white/[0.03] rounded-lg px-2 py-1">
+                  <span className="text-[#7f8a9d] block text-[9px] uppercase">Forecast</span>
+                  <strong className="text-white font-bold">{ev.forecast}</strong>
+                </div>
+                <div className="bg-white/[0.03] rounded-lg px-2 py-1 text-right">
+                  <span className="text-[#7f8a9d] block text-[9px] uppercase">Previous</span>
+                  <strong className="text-[#b8c0cc] font-semibold">{ev.previous}</strong>
+                </div>
               </div>
             </div>
           ))}
         </div>
-      </Card>
+      </section>
     </>
   );
 }
@@ -1658,26 +1932,26 @@ export function SettingsPage() {
 
           {/* 5. Notifications & Copy Trading */}
           <Card className="settings-card" id="alerts">
-            <h2>Notifications &amp; automatic copy trading</h2>
+            <h2>Notifications, Multi-TP Alerts &amp; Copy Trading</h2>
             {[
               [
                 "signals",
-                "VIP Signal alerts",
-                "Notify me immediately when Pastor Mike posts a new trade signal.",
+                "VIP Signal & Multi-TP (TP1–TP5) Hit Alerts",
+                "Notify me immediately in the topbar alert bell when Pastor Mike posts a signal or when live market prices hit TP1, TP2, TP3, TP4, TP5, or SL.",
                 notifySignals,
                 setNotifySignals,
               ],
               [
                 "sessions",
-                "Live session reminders",
-                "Remind me 30 minutes before London and New York live trading sessions.",
+                "Live Broadcast & Waiting Room Reminders",
+                "Remind me before scheduled London and New York live trading sessions go live.",
                 notifySessions,
                 setNotifySessions,
               ],
               [
                 "copy",
-                "Automatic signal copying",
-                "Enable one-click signal execution and tracking for my connected Exness account.",
+                "Exness Custom Lot & TP Copy-Trading Bridge",
+                "Enable one-click custom lot size and TP selection with Exness WebTerminal bridge.",
                 autoCopySignals,
                 setAutoCopySignals,
               ],
@@ -1738,7 +2012,7 @@ export function SettingsPage() {
                 </span>
                 <h2>Client &amp; Admin Dashboard SQL Schema</h2>
                 <p>
-                  Copy and run this SQL script in your Supabase SQL Editor to create/upgrade all tables and storage buckets (<code>course_lessons</code>, <code>student_lesson_progress</code>, <code>student_quiz_attempts</code>, <code>live_sessions</code>, <code>live_session_messages</code>, <code>trading_signals</code>, <code>student_trades</code>, <code>mentor_messages</code>, <code>student_certificates</code>, and <code>student-avatars</code>).
+                  Copy and run this idempotent SQL script in your Supabase SQL Editor to upgrade your database with all new tables, columns, and storage buckets (<code>courses</code> level PDFs &amp; quizzes, <code>course_lessons</code>, <code>trading_signals</code> TP1–TP5 targets, <code>student_trades</code> custom TP/SL &amp; Exness sync, <code>client_notifications</code> alert bell feed, <code>certificate_templates</code>, and storage buckets <code>student-avatars</code>, <code>course-videos</code>, <code>course-pdfs</code>, <code>certificate-templates</code>).
                 </p>
               </div>
               <button
@@ -1754,6 +2028,14 @@ export function SettingsPage() {
                 {copiedUpgradeSql ? "Copied Upgrade SQL!" : "Copy Dashboard Upgrade SQL"}
               </button>
             </div>
+            <details className="mt-4 pt-3 border-t border-white/10">
+              <summary className="text-xs font-mono font-bold text-[#ffde02] cursor-pointer select-none">
+                Inspect Complete Supabase Upgrade SQL Script ↓
+              </summary>
+              <pre className="mt-3 p-4 rounded-xl bg-[#0b0e14] border border-white/10 text-[11px] font-mono text-[#c5cedb] overflow-x-auto max-h-80 overflow-y-auto">
+                {DASHBOARD_UPGRADE_SQL}
+              </pre>
+            </details>
           </Card>
         </div>
       </div>
@@ -1996,7 +2278,9 @@ export function CourseDetailPage() {
       <div className="lesson-list">
         <div className="section-title">
           <div>
-            <p className="p-eyebrow">COURSE VIDEO CURRICULUM ({c.lessons.length} LESSONS)</p>
+            <p className="p-eyebrow">
+              {c.level.toUpperCase()} LEVEL VIDEO CURRICULUM ({c.lessons.length} UPLOADED VIDEOS)
+            </p>
             <h2>{c.title} Lessons</h2>
           </div>
           <span>
@@ -2007,38 +2291,52 @@ export function CourseDetailPage() {
               : `0 of ${c.lessons.length} complete`}
           </span>
         </div>
-        {c.lessons.map((lesson, i) => {
-          const isDone = completedIds.has(lesson.id);
-          const isNext = nextIncompleteLesson?.id === lesson.id;
-          return (
-            <Link
-              className={!isDepositCompleted ? "locked" : ""}
-              to={isDepositCompleted ? `/lessons/${lesson.id}` : "#"}
-              key={lesson.id}
-            >
-              <i>
-                {isDepositCompleted && isDone ? (
-                  <Icon name="check" />
-                ) : !isDepositCompleted ? (
-                  <Icon name="lock" />
-                ) : (
-                  i + 1
-                )}
-              </i>
-              <span>
-                <b>{lesson.title}</b>
-                <small>
-                  Video lesson · {lesson.durationMinutes} min · {lesson.keyTakeaways[0] || lesson.summary}
-                </small>
-              </span>
-              {isDepositCompleted && isDone && <Badge tone="green">COMPLETED</Badge>}
-              {isDepositCompleted && !isDone && isNext && <Badge>UP NEXT</Badge>}
-              <Icon name="arrow" />
-            </Link>
-          );
-        })}
 
-        {/* Auto-Generated Course Assessment Row */}
+        {c.lessons.length === 0 ? (
+          <Card className="p-6 text-center space-y-2 border border-dashed border-white/15">
+            <VideoIcon size={28} className="mx-auto text-[#ffde02]" />
+            <h3 className="text-sm font-bold text-white">
+              No Videos Uploaded for {c.title} ({c.level}) Yet
+            </h3>
+            <p className="text-xs text-[#9aa4b5] max-w-lg mx-auto">
+              Pastor Mike names and uploads the individual course videos for each of the 4 levels directly from the Admin Course Studio. You can already take the {c.level} Level PDF Assessment below!
+            </p>
+          </Card>
+        ) : (
+          c.lessons.map((lesson, i) => {
+            const isDone = completedIds.has(lesson.id);
+            const isNext = nextIncompleteLesson?.id === lesson.id;
+            return (
+              <Link
+                className={!isDepositCompleted ? "locked" : ""}
+                to={isDepositCompleted ? `/lessons/${lesson.id}` : "#"}
+                key={lesson.id}
+              >
+                <i>
+                  {isDepositCompleted && isDone ? (
+                    <Icon name="check" />
+                  ) : !isDepositCompleted ? (
+                    <Icon name="lock" />
+                  ) : (
+                    i + 1
+                  )}
+                </i>
+                <span>
+                  <b>{lesson.title}</b>
+                  <small>
+                    Video lesson · {lesson.durationMinutes} min ·{" "}
+                    {lesson.keyTakeaways[0] || lesson.summary}
+                  </small>
+                </span>
+                {isDepositCompleted && isDone && <Badge tone="green">COMPLETED</Badge>}
+                {isDepositCompleted && !isDone && isNext && <Badge>UP NEXT</Badge>}
+                <Icon name="arrow" />
+              </Link>
+            );
+          })
+        )}
+
+        {/* Auto-Generated Level PDF Mastery Assessment Row */}
         <Link
           className={!isDepositCompleted ? "locked" : ""}
           to={isDepositCompleted ? `/quiz/${c.slug}` : "#"}
@@ -2047,12 +2345,20 @@ export function CourseDetailPage() {
             <Icon name="chart" />
           </i>
           <span>
-            <b>{c.title} — Auto-Generated Mastery Quiz</b>
+            <b>
+              {c.title} ({c.level} Level) — Multi-Question PDF Mastery Quiz
+            </b>
             <small>
-              Dynamic assessment generated from all {c.lessons.length} uploaded lessons in {c.title}
+              {c.levelPdfName
+                ? `Generated from Admin PDF: ${c.levelPdfName} (${
+                    generateQuizForCourse(c.slug).length
+                  } questions)`
+                : `Multi-question assessment for ${c.level} level (${
+                    generateQuizForCourse(c.slug).length
+                  } questions)`}
             </small>
           </span>
-          <Badge tone="yellow">AUTO-QUIZ</Badge>
+          <Badge tone="yellow">{c.level.toUpperCase()} PDF QUIZ</Badge>
           <Icon name="arrow" />
         </Link>
       </div>
@@ -2121,7 +2427,22 @@ export function LessonPage() {
     );
   }
 
-  if (!activeLesson || !activeCourse) return null;
+  if (!activeLesson || !activeCourse) {
+    return (
+      <Card className="p-8 text-center space-y-3 my-6">
+        <VideoIcon size={32} className="mx-auto text-[#ffde02]" />
+        <h2 className="text-lg font-bold text-white">No Video Lessons Uploaded Yet</h2>
+        <p className="text-xs text-[#9aa4b5] max-w-md mx-auto">
+          Pastor Mike will upload and name the video lessons for this track in the Admin Course Studio.
+        </p>
+        <div className="pt-2">
+          <Link className="p-button primary rounded-full" to="/courses">
+            Back to Courses
+          </Link>
+        </div>
+      </Card>
+    );
+  }
 
   const currentIdx = activeCourse.lessons.findIndex((l) => l.id === activeLesson?.id);
   const nextLesson = activeCourse.lessons[currentIdx + 1];
@@ -2167,7 +2488,7 @@ export function LessonPage() {
                   variant="secondary"
                   onClick={() => nav(`/quiz/${activeCourse.slug}`)}
                 >
-                  Take Course Quiz <Icon name="arrow" />
+                  Take Level PDF Quiz <Icon name="arrow" />
                 </Button>
               )}
             </div>
@@ -2221,8 +2542,8 @@ export function LessonPage() {
               <Icon name="chart" />
             </i>
             <span>
-              <strong className="text-[#ffde02]">Take Auto-Generated Quiz</strong>
-              <small>Test your mastery of {activeCourse.title}</small>
+              <strong className="text-[#ffde02]">Take {activeCourse.level} PDF Quiz</strong>
+              <small>Multi-question assessment for {activeCourse.title}</small>
             </span>
           </Link>
         </aside>
@@ -2308,11 +2629,20 @@ function LessonVideoPlayer({
   );
 }
 
-// Auto-Generated Course Quiz Page (/quiz/:quizId)
+// ============================================================================
+// MULTI-QUESTION LEVEL PDF QUIZ PAGE (/quiz/:quizId)
+// ============================================================================
+
 export function QuizPage() {
   const { quizId } = useParams();
   const student = useCurrentStudent();
-  const courses = getCachedCourses();
+  const syncTick = usePortalDataSync();
+  const [courses, setCourses] = useState<CourseTrack[]>(getCachedCourses());
+
+  useEffect(() => {
+    void fetchCoursesWithLessonsFromDb().then(setCourses);
+  }, [syncTick]);
+
   const course =
     courses.find((c) => c.slug === quizId || c.id === quizId) || courses[0];
   const generatedQuestions = generateQuizForCourse(course?.slug || "forex-foundations");
@@ -2337,7 +2667,7 @@ export function QuizPage() {
     await recordQuizAttemptInDb(
       student.email,
       course?.slug || "forex-foundations",
-      `${course?.title || "Forex Foundations"} Assessment`,
+      `${course?.title || "Forex Foundations"} (${course?.level || "Beginner"} PDF Quiz)`,
       finalScore,
       generatedQuestions.length
     );
@@ -2359,8 +2689,8 @@ export function QuizPage() {
               <Icon name="close" />
             </Link>
             <span>
-              {course?.title.toUpperCase()} · AUTO-GENERATED ASSESSMENT ({course?.lessons.length}{" "}
-              LESSONS)
+              {course?.title.toUpperCase()} · {course?.level.toUpperCase()} LEVEL PDF ASSESSMENT (
+              {generatedQuestions.length} QUESTIONS)
               <Progress value={((n + 1) / generatedQuestions.length) * 100} />
             </span>
             <b>
@@ -2368,9 +2698,15 @@ export function QuizPage() {
             </b>
           </div>
           <Card className="quiz-card">
-            <p className="p-eyebrow">
-              QUESTION {n + 1} OF {generatedQuestions.length} · GENERATED FROM COURSE CURRICULUM
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className="p-eyebrow m-0">
+                QUESTION {n + 1} OF {generatedQuestions.length} ·{" "}
+                {course?.levelPdfName
+                  ? `GENERATED FROM ${course.levelPdfName.toUpperCase()}`
+                  : `${course?.level.toUpperCase()} LEVEL CURRICULUM ASSESSMENT`}
+              </p>
+              <Badge tone="yellow">{course?.level} Level</Badge>
+            </div>
             <h1>{generatedQuestions[n].question}</h1>
             <div className="answers">
               {generatedQuestions[n].options.map((x, i) => (
@@ -2378,7 +2714,7 @@ export function QuizPage() {
                   type="button"
                   className={picked === i ? "selected" : ""}
                   onClick={() => setPicked(i)}
-                  key={x}
+                  key={`${n}-${i}`}
                 >
                   <i>{String.fromCharCode(65 + i)}</i>
                   {x}
@@ -2386,6 +2722,14 @@ export function QuizPage() {
                 </button>
               ))}
             </div>
+            {picked !== null && generatedQuestions[n].explanation && (
+              <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#cfd7e4]">
+                <strong className="text-[#ffde02] font-mono uppercase text-[10px] block mb-0.5">
+                  Study Note &amp; Concept Focus
+                </strong>
+                {generatedQuestions[n].explanation}
+              </div>
+            )}
             <div>
               <Button variant="ghost" onClick={() => setN(Math.max(0, n - 1))}>
                 Back
@@ -2405,7 +2749,7 @@ export function QuizPage() {
                   }
                 }}
               >
-                {n + 1 === generatedQuestions.length ? "Submit Quiz" : "Next"}{" "}
+                {n + 1 === generatedQuestions.length ? "Submit Quiz" : "Next Question"}{" "}
                 <Icon name="arrow" />
               </Button>
             </div>
@@ -2427,7 +2771,7 @@ export function QuizPage() {
           </h1>
           <p>
             You answered {score} of {generatedQuestions.length} questions correctly ({scorePercent}
-            %).{" "}
+            %) on the {course?.level} Level Assessment.{" "}
             {savingResult
               ? "Syncing score to Supabase..."
               : "Your Quiz Average on the Overview and Progress pages has been updated automatically."}
@@ -2440,7 +2784,7 @@ export function QuizPage() {
               Return to {course?.title}
             </Link>
             <Button variant="secondary" onClick={reset}>
-              Retake Auto-Quiz
+              Retake Level Quiz
             </Button>
           </div>
         </Card>
@@ -2451,29 +2795,151 @@ export function QuizPage() {
 
 // ============================================================================
 // 4. REAL PROGRESS & VERIFIED CERTIFICATES PAGE (/progress)
+//    - Uses Admin's Uploaded Certificate Template + Student Name Overlay + PNG Download
 // ============================================================================
 
 export function ProgressPage() {
   const student = useCurrentStudent();
   const syncTick = usePortalDataSync();
   const [certificates, setCertificates] = useState<StudentCertificateItem[]>([]);
+  const [certTemplate, setCertTemplate] = useState<CertificateTemplateConfig>(
+    getCachedCertificateTemplate()
+  );
   const [previewCert, setPreviewCert] = useState<StudentCertificateItem | null>(null);
+  const [downloadingCert, setDownloadingCert] = useState(false);
 
   useEffect(() => {
     void fetchCoursesWithLessonsFromDb();
     void fetchStudentLessonsCompletedFromDb(student.email);
     void fetchStudentQuizAttemptsFromDb(student.email);
     void fetchStudentCertificatesFromDb(student.email).then(setCertificates);
+    void fetchCertificateTemplateFromDb().then(setCertTemplate);
   }, [student.email, syncTick]);
 
   const metrics = getStudentProgressMetrics(student.email);
+
+  // Renders the Admin's uploaded certificate template image + Student Name onto an HTML5 Canvas and downloads a crisp PNG
+  async function handleDownloadCertificatePng(cert: StudentCertificateItem) {
+    setDownloadingCert(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 1000;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Draw background or Admin uploaded template image
+      let drewImage = false;
+      if (certTemplate.templateImageUrl) {
+        try {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("Image load failed"));
+            img.src = certTemplate.templateImageUrl;
+          });
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          drewImage = true;
+        } catch {
+          drewImage = false;
+        }
+      }
+
+      if (!drewImage) {
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, "#121722");
+        grad.addColorStop(0.5, "#0d1118");
+        grad.addColorStop(1, "#171c28");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Double gold institutional border
+        ctx.strokeStyle = "#ffde02";
+        ctx.lineWidth = 6;
+        ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+        ctx.strokeStyle = "rgba(255, 222, 2, 0.35)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(58, 58, canvas.width - 116, canvas.height - 116);
+
+        ctx.fillStyle = "#ffde02";
+        ctx.font = "bold 22px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          "CANDLESTICKS TRADING ACADEMY · OFFICIAL CREDENTIAL",
+          canvas.width / 2,
+          170
+        );
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 56px Georgia, serif";
+        ctx.fillText("CERTIFICATE OF MASTERY", canvas.width / 2, 260);
+
+        ctx.fillStyle = "#9aa4b5";
+        ctx.font = "24px sans-serif";
+        ctx.fillText("This officially certifies that", canvas.width / 2, 340);
+      }
+
+      // Overlay Student Full Name at Admin-configured vertical position (nameYPercent)
+      const nameY = (certTemplate.nameYPercent / 100) * canvas.height;
+      const scaledFontSize = Math.round((certTemplate.fontSizePx || 38) * 1.65);
+      ctx.fillStyle = certTemplate.fontColor || "#ffde02";
+      ctx.font = `bold ${scaledFontSize}px ${
+        certTemplate.fontFamily === "serif"
+          ? "Georgia, serif"
+          : certTemplate.fontFamily === "mono"
+          ? "monospace"
+          : "sans-serif"
+      }`;
+      ctx.textAlign = "center";
+      ctx.fillText(cert.studentName, canvas.width / 2, nameY);
+
+      if (certTemplate.showCourseTitle) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 28px sans-serif";
+        ctx.fillText(
+          `Successfully completed ${cert.courseTitle}`,
+          canvas.width / 2,
+          nameY + 75
+        );
+      }
+
+      // Footer metadata
+      const footerY = canvas.height - 110;
+      ctx.font = "bold 20px monospace";
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillText(`${cert.issuedBy} · Academy Founder`, canvas.width * 0.25, footerY);
+
+      if (certTemplate.showCertificateCode) {
+        ctx.fillStyle = "#ffde02";
+        ctx.fillText(`ID: ${cert.certificateCode}`, canvas.width * 0.5, footerY);
+      }
+
+      if (certTemplate.showIssueDate) {
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillText(
+          `Issued: ${new Date(cert.issuedAt).toLocaleDateString()}`,
+          canvas.width * 0.75,
+          footerY
+        );
+      }
+
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = `${cert.studentName.replace(/\s+/g, "_")}_${cert.courseSlug}_Certificate.png`;
+      link.href = dataUrl;
+      link.click();
+    } finally {
+      setDownloadingCert(false);
+    }
+  }
 
   return (
     <>
       <Header
         eyebrow="YOUR LEARNING JOURNEY · REAL DATABASE METRICS"
         title="Progress, Quizzes & Verified Certificates"
-        copy="Live completion tracking from your completed video lessons and auto-generated course assessments."
+        copy="Live completion tracking from your completed video lessons, 4-level PDF assessments, and official downloadable certificates."
         action={
           <Badge tone={metrics.streakDays > 0 ? "green" : "yellow"}>
             {metrics.streakDays} DAY STREAK
@@ -2535,7 +3001,7 @@ export function ProgressPage() {
                   to={`/quiz/${c.slug}`}
                   className="block text-[10px] font-mono text-[#ffde02] hover:underline mt-1"
                 >
-                  Quiz →
+                  Level Quiz →
                 </Link>
               </div>
             </div>
@@ -2549,7 +3015,10 @@ export function ProgressPage() {
           </p>
           <div className="heatmap">
             {Array.from({ length: 56 }, (_, i) => {
-              const activeThreshold = Math.min(56, metrics.completedLessonsCount * 2 + metrics.quizCount * 3);
+              const activeThreshold = Math.min(
+                56,
+                metrics.completedLessonsCount * 2 + metrics.quizCount * 3
+              );
               const isRecent = i >= 56 - activeThreshold;
               return (
                 <i
@@ -2570,7 +3039,7 @@ export function ProgressPage() {
             <p className="text-xs text-[#8c95a6] py-3">
               No quiz attempts recorded yet. Visit any course and click{" "}
               <Link to="/quiz/forex-foundations" className="text-[#ffde02] underline">
-                Take Auto-Generated Quiz
+                Take Level PDF Quiz
               </Link>{" "}
               to test your knowledge.
             </p>
@@ -2608,10 +3077,10 @@ export function ProgressPage() {
           <div className="py-8 text-center space-y-2">
             <Award size={32} className="mx-auto text-[#ffde02]" />
             <p className="text-sm font-bold text-white">
-              Complete a course track &amp; pass its quiz (70%+) to unlock your verified certificate
+              Complete a course track &amp; pass its level quiz (70%+) to unlock your verified certificate
             </p>
             <p className="text-xs text-[#8c95a6]">
-              Pastor Mike can also issue or verify your certificate directly from the Admin Student Roster.
+              Once Pastor Mike issues or approves your certificate from the Admin Console, your personalized certificate with your full name on the official template appears right here for instant download.
             </p>
           </div>
         ) : (
@@ -2619,7 +3088,7 @@ export function ProgressPage() {
             {certificates.map((cert) => (
               <div
                 key={cert.id}
-                className="p-5 rounded-2xl bg-gradient-to-br from-[#181d29] to-[#11151d] border border-[#ffde02]/40 flex items-center justify-between gap-4"
+                className="p-5 rounded-2xl bg-gradient-to-br from-[#181d29] to-[#11151d] border border-[#ffde02]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
               >
                 <div className="space-y-1">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02]">
@@ -2631,7 +3100,9 @@ export function ProgressPage() {
                     {cert.issuedBy} on {new Date(cert.issuedAt).toLocaleDateString()}
                   </p>
                 </div>
-                <Button onClick={() => setPreviewCert(cert)}>View Certificate</Button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <Button onClick={() => setPreviewCert(cert)}>View &amp; Download</Button>
+                </div>
               </div>
             ))}
           </div>
@@ -2640,40 +3111,82 @@ export function ProgressPage() {
 
       {previewCert && (
         <div className="portal-modal">
-          <div className="bg-[#0e1118] border-2 border-[#ffde02] rounded-3xl p-8 max-w-2xl w-full text-center space-y-5 shadow-2xl relative">
-            <span className="text-xs font-mono uppercase tracking-widest text-[#ffde02]">
-              CANDLESTICKS TRADING ACADEMY · OFFICIAL CREDENTIAL
-            </span>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">
-              Certificate of Mastery
-            </h1>
-            <p className="text-xs text-[#9aa4b5]">This certifies that</p>
-            <div className="text-2xl font-bold text-[#ffde02] border-b border-white/15 pb-3 max-w-md mx-auto">
-              {previewCert.studentName}
+          <div className="bg-[#0e1118] border-2 border-[#ffde02] rounded-3xl p-5 sm:p-7 max-w-3xl w-full text-center space-y-5 shadow-2xl relative">
+            {/* Live Rendered Certificate Using Admin's Uploaded Template + Student Name Overlay */}
+            <div className="relative w-full aspect-[16/10] rounded-2xl overflow-hidden border border-[#ffde02]/40 bg-[#0b0e14] shadow-2xl select-none">
+              {certTemplate.templateImageUrl ? (
+                <img
+                  src={certTemplate.templateImageUrl}
+                  alt="Official Certificate Template"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-[#141926] via-[#0e121b] to-[#191f2e] flex flex-col items-center justify-between p-8 border-[6px] border-double border-[#ffde02]/40">
+                  <div className="text-center space-y-1">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#ffde02]">
+                      CANDLESTICKS TRADING ACADEMY · OFFICIAL CREDENTIAL
+                    </span>
+                    <h4 className="text-xl sm:text-2xl font-serif font-extrabold text-white tracking-wide">
+                      CERTIFICATE OF MASTERY
+                    </h4>
+                    <p className="text-[11px] text-[#9aa4b5]">This officially certifies that</p>
+                  </div>
+                  <div />
+                  <div className="w-full flex items-center justify-around pt-3 border-t border-white/10 text-[10px] font-mono text-[#9aa4b5]">
+                    <span>{previewCert.issuedBy} · Founder</span>
+                    {certTemplate.showCertificateCode && (
+                      <span className="text-[#ffde02]">{previewCert.certificateCode}</span>
+                    )}
+                    {certTemplate.showIssueDate && (
+                      <span>{new Date(previewCert.issuedAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamically Positioned Student Name Overlay from Admin Template Config */}
+              <div
+                className="absolute left-0 right-0 px-6 text-center pointer-events-none"
+                style={{
+                  top: `${certTemplate.nameYPercent}%`,
+                  transform: "translateY(-50%)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: `${Math.max(18, Math.round(certTemplate.fontSizePx * 0.78))}px`,
+                    color: certTemplate.fontColor || "#ffde02",
+                    fontFamily:
+                      certTemplate.fontFamily === "serif"
+                        ? "Georgia, Cambria, 'Times New Roman', serif"
+                        : certTemplate.fontFamily === "mono"
+                        ? "monospace"
+                        : "sans-serif",
+                  }}
+                  className="font-extrabold tracking-wide drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)]"
+                >
+                  {previewCert.studentName}
+                </div>
+                {certTemplate.showCourseTitle && (
+                  <div className="text-xs sm:text-sm font-bold text-white/95 mt-1 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                    {previewCert.courseTitle}
+                  </div>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-[#cfd7e4] max-w-lg mx-auto leading-relaxed">
-              has successfully completed the curriculum and assessments for{" "}
-              <strong className="text-white">{previewCert.courseTitle}</strong> with verified live Exness trading execution.
-            </p>
-            <div className="flex items-center justify-around pt-4 border-t border-white/10 text-xs font-mono text-[#9aa4b5]">
-              <div>
-                <strong className="text-white block">{previewCert.issuedBy}</strong>
-                <span>Academy Founder</span>
-              </div>
-              <div>
-                <strong className="text-[#ffde02] block">{previewCert.certificateCode}</strong>
-                <span>Verification ID</span>
-              </div>
-              <div>
-                <strong className="text-white block">
-                  {new Date(previewCert.issuedAt).toLocaleDateString()}
-                </strong>
-                <span>Date Issued</span>
-              </div>
-            </div>
-            <div className="flex justify-center gap-3 pt-4">
-              <Button onClick={() => window.print()}>Print / Save PDF</Button>
-              <Button variant="secondary" onClick={() => setPreviewCert(null)}>
+
+            <div className="flex flex-wrap justify-center gap-3 pt-2">
+              <Button
+                onClick={() => void handleDownloadCertificatePng(previewCert)}
+                disabled={downloadingCert}
+              >
+                <Download size={15} />{" "}
+                {downloadingCert ? "Rendering PNG..." : "Download Official Certificate (PNG)"}
+              </Button>
+              <Button variant="secondary" onClick={() => window.print()}>
+                Print / Save PDF
+              </Button>
+              <Button variant="ghost" onClick={() => setPreviewCert(null)}>
                 Close
               </Button>
             </div>
@@ -2686,6 +3199,7 @@ export function ProgressPage() {
 
 // ============================================================================
 // 5. LIVE SESSIONS, REAL-TIME COUNTDOWN & SCREEN-SHARE STREAM ROOM (/sessions)
+//    - 100% Real Admin-Scheduled Sessions & Active Broadcasts (Zero Demo Data)
 // ============================================================================
 
 export function SessionSchedulePage() {
@@ -2730,8 +3244,12 @@ export function SessionSchedulePage() {
         title="Live Sessions & Broadcast Schedule"
         copy="Watch Pastor Mike share his live screen and charts, trade the London and New York opens together, and chat in real time."
         action={
-          <Badge tone={isLiveNow ? "green" : "yellow"}>
-            {isLiveNow ? "● HOST IS LIVE NOW" : `NEXT STREAM IN ${countdownText}`}
+          <Badge tone={isLiveNow ? "green" : featured ? "yellow" : "gray"}>
+            {isLiveNow
+              ? "● HOST IS LIVE NOW"
+              : featured
+              ? `NEXT STREAM IN ${countdownText}`
+              : "NO ACTIVE STREAM"}
           </Badge>
         }
       />
@@ -2743,7 +3261,7 @@ export function SessionSchedulePage() {
         />
       )}
 
-      {featured && (
+      {featured ? (
         <Card className="featured-session">
           <div className="live-art">
             <Badge tone={isLiveNow ? "green" : "red"}>
@@ -2793,41 +3311,53 @@ export function SessionSchedulePage() {
             )}
           </div>
         </Card>
+      ) : (
+        <Card className="p-8 text-center space-y-3 my-4 border border-dashed border-white/15">
+          <Radio size={32} className="mx-auto text-[#ffde02]" />
+          <h2 className="text-lg font-bold text-white">No Live Sessions Scheduled Yet</h2>
+          <p className="text-xs text-[#9aa4b5] max-w-lg mx-auto">
+            Only real live sessions scheduled or broadcast by Pastor Mike in the Admin Broadcast Studio appear here. As soon as a session is scheduled or goes live, the countdown and stream room will unlock automatically.
+          </p>
+        </Card>
       )}
 
-      <div className="section-title">
-        <div>
-          <p className="p-eyebrow">ALL SCHEDULED ROOMS ({sessions.length})</p>
-          <h2>Upcoming &amp; Active Broadcasts</h2>
-        </div>
-      </div>
-      <div className="session-grid">
-        {sessions.map((s) => (
-          <Card key={s.id}>
-            <i>
-              <Icon name="video" />
-            </i>
-            <Badge tone={s.status === "live" ? "green" : "yellow"}>
-              {s.status === "live" ? "● LIVE NOW" : s.focusPair}
-            </Badge>
-            <h2>{s.title}</h2>
-            <p>{s.description}</p>
-            <span>
-              <Icon name="calendar" /> {new Date(s.scheduledAt).toLocaleString()} ·{" "}
-              {s.durationMinutes}m
-            </span>
-            {isDepositCompleted ? (
-              <Link className="p-button secondary" to={`/sessions/live/${s.id}`}>
-                Enter Live Room
-              </Link>
-            ) : (
-              <Button variant="secondary" disabled>
-                Locked ($50 Deposit)
-              </Button>
-            )}
-          </Card>
-        ))}
-      </div>
+      {sessions.length > 0 && (
+        <>
+          <div className="section-title">
+            <div>
+              <p className="p-eyebrow">ALL SCHEDULED ROOMS ({sessions.length})</p>
+              <h2>Upcoming &amp; Active Broadcasts</h2>
+            </div>
+          </div>
+          <div className="session-grid">
+            {sessions.map((s) => (
+              <Card key={s.id}>
+                <i>
+                  <Icon name="video" />
+                </i>
+                <Badge tone={s.status === "live" ? "green" : "yellow"}>
+                  {s.status === "live" ? "● LIVE NOW" : s.focusPair}
+                </Badge>
+                <h2>{s.title}</h2>
+                <p>{s.description}</p>
+                <span>
+                  <Icon name="calendar" /> {new Date(s.scheduledAt).toLocaleString()} ·{" "}
+                  {s.durationMinutes}m
+                </span>
+                {isDepositCompleted ? (
+                  <Link className="p-button secondary" to={`/sessions/live/${s.id}`}>
+                    {s.status === "live" ? "Join Live Stream Now" : "Enter Live Room"}
+                  </Link>
+                ) : (
+                  <Button variant="secondary" disabled>
+                    Locked ($50 Deposit)
+                  </Button>
+                )}
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -3342,13 +3872,16 @@ export function TradesPage() {
             <select
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(e.target.value as "ALL" | "OPEN" | "WIN" | "LOSS")
+                setStatusFilter(
+                  e.target.value as "ALL" | "OPEN" | "PARTIAL TP" | "WIN" | "LOSS"
+                )
               }
             >
               <option value="ALL">All Outcomes</option>
-              <option value="WIN">Wins (+P&amp;L)</option>
-              <option value="LOSS">Losses (-P&amp;L)</option>
               <option value="OPEN">Open Positions</option>
+              <option value="PARTIAL TP">Partial TP Hit</option>
+              <option value="WIN">Wins (+P&amp;L / All TPs)</option>
+              <option value="LOSS">Losses (-P&amp;L / SL)</option>
             </select>
             <select
               value={sourceFilter}
@@ -3359,8 +3892,8 @@ export function TradesPage() {
               }
             >
               <option value="ALL">All Sources</option>
+              <option value="SIGNAL_COPY">Copied VIP Signals (Exness)</option>
               <option value="EXNESS_SYNC">Exness Partner Sync</option>
-              <option value="SIGNAL_COPY">VIP Signal Copy</option>
               <option value="MANUAL">Manual Entry</option>
             </select>
           </div>
@@ -3370,11 +3903,11 @@ export function TradesPage() {
           <table>
             <thead>
               <tr>
-                <th>Pair &amp; Source</th>
+                <th>Pair &amp; Exness Source</th>
                 <th>Direction</th>
                 <th>Lots</th>
-                <th>Open price</th>
-                <th>Close price</th>
+                <th>Entry / Open</th>
+                <th>Custom TP / Close</th>
                 <th>P&amp;L (USD)</th>
                 <th>Return</th>
                 <th>Status</th>
@@ -3383,8 +3916,8 @@ export function TradesPage() {
             <tbody>
               {paginatedTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-xs text-[#8c95a6]">
-                    No trades match your active filter criteria.
+                  <td colSpan={8} className="text-center py-10 text-xs text-[#8c95a6]">
+                    No trades copied or synced from your Exness account yet. Click &ldquo;Copy &amp; Log Trade&rdquo; on any VIP Signal or &ldquo;Sync Exness Partner Feed&rdquo; above.
                   </td>
                 </tr>
               ) : (
@@ -3394,8 +3927,16 @@ export function TradesPage() {
                       <div>
                         <b>{t.pair}</b>
                         <small className="block text-[10px] font-mono text-[#8c95a6]">
-                          {t.source} · {new Date(t.executedAt).toLocaleDateString()}
+                          {t.source === "SIGNAL_COPY"
+                            ? `COPIED TO EXNESS (${t.exnessAccountId || "LINKED"})`
+                            : t.source}{" "}
+                          · {new Date(t.executedAt).toLocaleDateString()}
                         </small>
+                        {t.notes && (
+                          <span className="block text-[10px] text-[#ffde02]/90 mt-0.5">
+                            {t.notes}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -3403,9 +3944,23 @@ export function TradesPage() {
                         {t.direction}
                       </Badge>
                     </td>
-                    <td className="font-mono">{t.lots.toFixed(2)}</td>
-                    <td className="font-mono">{t.openPrice}</td>
-                    <td className="font-mono">{t.closePrice}</td>
+                    <td className="font-mono font-bold text-white">{t.lots.toFixed(2)}</td>
+                    <td className="font-mono">
+                      <div>{t.openPrice}</div>
+                      {t.customSl && (
+                        <small className="block text-[10px] text-red-400">
+                          SL: {t.customSl}
+                        </small>
+                      )}
+                    </td>
+                    <td className="font-mono">
+                      <div>{t.customTp || t.closePrice}</div>
+                      {t.customTp && (
+                        <small className="block text-[10px] text-emerald-400">
+                          Target TP: {t.customTp}
+                        </small>
+                      )}
+                    </td>
                     <td
                       className={`font-mono font-bold ${
                         t.pnlUsd >= 0 ? "positive" : "negative"
@@ -3538,7 +4093,7 @@ export function TradesPage() {
                   />
                 </label>
                 <label className="text-xs text-[#9aa4b5]">
-                  Close Price
+                  Close / TP Price
                   <input
                     value={closePrice}
                     onChange={(e) => setClosePrice(e.target.value)}
@@ -3587,16 +4142,260 @@ export function TradesPage() {
 }
 
 // ============================================================================
-// 7. VIP SIGNALS FEED & LOT SIZE RISK CALCULATOR (/signals, /signals/:signalId)
+// 7. VIP SIGNALS FEED, REDESIGNED POSITION CALCULATOR, MULTI-TP LIVE MARKET
+//    SYNC & CUSTOM COPY-TO-EXNESS EXECUTION MODAL (/signals, /signals/:signalId)
 // ============================================================================
 
+function CopySignalToExnessModal({
+  signal,
+  student,
+  defaultLots,
+  onClose,
+  onCopied,
+}: {
+  signal: TradingSignalItem;
+  student: ExnessStudent;
+  defaultLots: number;
+  onClose: () => void;
+  onCopied: (summaryMsg: string) => void;
+}) {
+  const tpLevels =
+    signal.tpLevels && signal.tpLevels.length > 0
+      ? signal.tpLevels
+      : [{ level: 1, label: "TP1", price: signal.tp, hit: false }];
+
+  const [customLots, setCustomLots] = useState(String(defaultLots || 0.1));
+  const [selectedTpLabel, setSelectedTpLabel] = useState(tpLevels[0]?.label || "TP1");
+  const [customTpPrice, setCustomTpPrice] = useState(tpLevels[0]?.price || signal.tp);
+  const [customSlPrice, setCustomSlPrice] = useState(signal.sl);
+  const [launchWebTerminal, setLaunchWebTerminal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleConfirmCopy(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    const lotsNum = Math.max(0.01, Number(customLots) || 0.01);
+
+    await addStudentTradeInDb({
+      studentEmail: student.email,
+      exnessAccountId: student.exnessId || "LINKED",
+      pair: signal.pair,
+      direction: signal.direction,
+      lots: lotsNum,
+      openPrice: signal.entry,
+      closePrice: customTpPrice.trim() || signal.tp,
+      customTp: customTpPrice.trim() || signal.tp,
+      customSl: customSlPrice.trim() || signal.sl,
+      signalId: signal.id,
+      pnlUsd: 0,
+      returnPct: 0,
+      status: "OPEN",
+      source: "SIGNAL_COPY",
+      notes: `Copied ${signal.pair} (${signal.direction}) · ${lotsNum.toFixed(
+        2
+      )} Lots · Target ${selectedTpLabel} (${customTpPrice}) · SL ${customSlPrice}`,
+    });
+
+    setSubmitting(false);
+
+    if (launchWebTerminal) {
+      window.open("https://my.exness.global/webtrading/", "_blank", "noopener,noreferrer");
+    }
+
+    onCopied(
+      `Copied ${signal.pair} (${signal.direction} · ${lotsNum.toFixed(
+        2
+      )} Lots · Target TP: ${customTpPrice} · SL: ${customSlPrice}) to your Exness Trade Ledger!`
+    );
+  }
+
+  return (
+    <div className="portal-modal">
+      <div className="bg-[#11151f] border-2 border-[#ffde02]/50 rounded-3xl p-6 sm:p-7 max-w-xl w-full text-left space-y-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3 pb-4 border-b border-white/10">
+          <div>
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffde02]">
+              EXNESS COPY-TRADING &amp; EXECUTION TERMINAL
+            </span>
+            <h2 className="text-xl font-extrabold text-white mt-1 flex items-center gap-2">
+              <span>Copy {signal.pair}</span>
+              <Badge tone={signal.direction === "BUY" ? "green" : "red"}>
+                {signal.direction}
+              </Badge>
+            </h2>
+            <p className="text-xs text-[#9aa4b5] mt-1">
+              Customize your Lot Size, Take-Profit (TP), and Stop-Loss (SL) before copying this setup to your linked Exness account (
+              <strong className="text-white font-mono">
+                {student.exnessId ? `••••${student.exnessId.slice(-4)}` : "Linked"}
+              </strong>
+              ).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#9aa4b5] hover:text-white cursor-pointer"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleConfirmCopy} className="space-y-4">
+          {/* Signal Reference Strip */}
+          <div className="grid grid-cols-3 gap-2.5 p-3.5 rounded-2xl bg-[#0b0e15] border border-white/10 text-xs font-mono">
+            <div>
+              <span className="text-[10px] text-[#7f8a9d] block">SIGNAL ENTRY</span>
+              <strong className="text-white text-sm">{signal.entry}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] text-[#7f8a9d] block">ADMIN STOP LOSS</span>
+              <strong className="text-red-400 text-sm">{signal.sl}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] text-[#7f8a9d] block">PRIMARY TP1</span>
+              <strong className="text-emerald-400 text-sm">{signal.tp}</strong>
+            </div>
+          </div>
+
+          {/* Custom Lot Size Selector */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-white">
+                Your Execution Lot Size (Standard Lots)
+              </label>
+              <span className="text-[11px] font-mono text-[#ffde02]">
+                Recommended: {defaultLots} Lots
+              </span>
+            </div>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              value={customLots}
+              onChange={(e) => setCustomLots(e.target.value)}
+              className="w-full h-11 bg-[#161b26] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+            />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[0.01, 0.05, 0.1, 0.25, 0.5, 1.0].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setCustomLots(String(preset))}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition cursor-pointer ${
+                    Number(customLots) === preset
+                      ? "bg-[#ffde02] text-black border-[#ffde02]"
+                      : "bg-white/5 text-[#cfd7e4] border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {preset.toFixed(2)} Lots
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Select from Admin TP1-TP5 or Set Custom Take-Profit */}
+          <div>
+            <label className="block text-xs font-bold text-white mb-1.5">
+              Select Admin Take-Profit Target (TP1–TP5) or Enter Custom TP
+            </label>
+            {tpLevels.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2.5">
+                {tpLevels.map((lvl) => (
+                  <button
+                    key={lvl.level}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTpLabel(lvl.label);
+                      setCustomTpPrice(lvl.price);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
+                      customTpPrice === lvl.price
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-400"
+                        : "bg-white/5 text-[#cfd7e4] border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {lvl.label}: {lvl.price} {lvl.hit ? "✓" : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <span className="text-[11px] text-[#9aa4b5] block mb-1">
+                  Your Custom Take-Profit (TP) Price
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={customTpPrice}
+                  onChange={(e) => {
+                    setCustomTpPrice(e.target.value);
+                    setSelectedTpLabel("Custom TP");
+                  }}
+                  className="w-full h-11 bg-[#161b26] border border-emerald-500/40 rounded-xl px-3.5 text-sm font-mono font-bold text-emerald-300 focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+              <div>
+                <span className="text-[11px] text-[#9aa4b5] block mb-1">
+                  Your Custom Stop-Loss (SL) Price
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={customSlPrice}
+                  onChange={(e) => setCustomSlPrice(e.target.value)}
+                  className="w-full h-11 bg-[#161b26] border border-red-500/40 rounded-xl px-3.5 text-sm font-mono font-bold text-red-300 focus:outline-none focus:border-red-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Option to also launch Exness WebTerminal */}
+          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#cfd7e4] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={launchWebTerminal}
+              onChange={(e) => setLaunchWebTerminal(e.target.checked)}
+              className="accent-[#ffde02] w-4 h-4"
+            />
+            <span>
+              Also open <strong>Exness WebTerminal</strong> in a new tab to place this live order on account{" "}
+              <code className="text-[#ffde02]">
+                {student.exnessId ? `••••${student.exnessId.slice(-4)}` : "Exness"}
+              </code>
+            </span>
+          </label>
+
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting
+                ? "Copying & Logging Trade..."
+                : `Copy & Log Trade (${Number(customLots || 0.1).toFixed(2)} Lots)`}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function SignalFeedPage() {
+  const nav = useNavigate();
   const student = useCurrentStudent();
   const syncTick = usePortalDataSync();
   const [signals, setSignals] = useState<TradingSignalItem[]>(getCachedSignals());
+  const [marketPrices, setMarketPrices] = useState<Record<string, number>>(
+    getCachedMarketPrices()
+  );
+  const [syncingPrices, setSyncingPrices] = useState(false);
   const [tab, setTab] = useState<"ALL" | "ACTIVE" | "CLOSED" | "WINS">("ALL");
   const [copy, setCopy] = useState(student.autoCopySignals ?? true);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [copyModalSignal, setCopyModalSignal] = useState<TradingSignalItem | null>(null);
 
   // Interactive Lot Size Calculator state
   const [calcBalance, setCalcBalance] = useState(String(student.accountBalanceUsd ?? 500));
@@ -3607,14 +4406,31 @@ export function SignalFeedPage() {
 
   useEffect(() => {
     void fetchSignalsFromDb().then(setSignals);
+    void fetchLiveMarketPrices().then(setMarketPrices);
   }, [syncTick]);
 
-  const activeSignalsCount = signals.filter((s) => s.status === "ACTIVE").length;
+  async function handleRefreshMarketAndTps() {
+    setSyncingPrices(true);
+    await evaluateSignalsAgainstMarketPrices();
+    const updatedSignals = await fetchSignalsFromDb();
+    setSignals(updatedSignals);
+    setMarketPrices(getCachedMarketPrices());
+    setSyncingPrices(false);
+  }
+
+  const activeSignalsCount = signals.filter(
+    (s) => s.status === "ACTIVE" || s.status === "PARTIAL TP"
+  ).length;
 
   const filteredSignals = signals.filter((s) => {
-    if (tab === "ACTIVE") return s.status === "ACTIVE";
+    if (tab === "ACTIVE") return s.status === "ACTIVE" || s.status === "PARTIAL TP";
     if (tab === "CLOSED") return s.status !== "ACTIVE";
-    if (tab === "WINS") return s.status === "HIT TP";
+    if (tab === "WINS")
+      return (
+        s.status === "HIT TP" ||
+        s.status === "ALL TPs HIT" ||
+        s.status === "PARTIAL TP"
+      );
     return true;
   });
 
@@ -3624,43 +4440,57 @@ export function SignalFeedPage() {
     Number(calcStopPips) || 30
   );
 
-  async function handleExecuteSignalToTrades(sig: TradingSignalItem, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    await addStudentTradeInDb({
-      studentEmail: student.email,
-      exnessAccountId: student.exnessId || "LINKED",
-      pair: sig.pair,
-      direction: sig.direction,
-      lots: lotCalc.recommendedLots,
-      openPrice: sig.entry,
-      closePrice: sig.status === "HIT TP" ? sig.tp : sig.entry,
-      pnlUsd: sig.status === "HIT TP" ? Number((lotCalc.riskUsd * 2.2).toFixed(2)) : 0,
-      returnPct: sig.status === "HIT TP" ? Number((Number(calcRiskPct) * 2.2).toFixed(2)) : 0,
-      status: sig.status === "HIT TP" ? "WIN" : "OPEN",
-      source: "SIGNAL_COPY",
-      notes: `Copied from Admin Signal (${sig.rr})`,
-    });
-    setCopyFeedback(
-      `Executed ${sig.pair} (${sig.direction} ${lotCalc.recommendedLots} lots) and logged to My Trades!`
-    );
-    setTimeout(() => setCopyFeedback(null), 4000);
-  }
-
   return (
     <>
       <Header
-        eyebrow="VIP MARKET SIGNALS · SYNCED FROM ADMIN CONSOLE"
+        eyebrow="VIP MARKET SIGNALS · LIVE MARKET MULTI-TP ENGINE"
         title="Signal Feed & Position Size Calculator"
-        copy="Real-time trade setups posted by Pastor Mike with Entry, Stop-Loss, Take-Profit, and one-click execution logging."
-        action={<Badge tone="green">{activeSignalsCount} ACTIVE SIGNALS</Badge>}
+        copy="Only real setups posted by Pastor Mike appear here, connected to live market prices for automatic TP1–TP5 and Stop-Loss tracking."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={syncingPrices}
+              onClick={() => void handleRefreshMarketAndTps()}
+              className="px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/15 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={13} className={syncingPrices ? "animate-spin" : ""} />
+              {syncingPrices ? "Checking Market..." : "Sync Live Market Prices"}
+            </button>
+            <Badge tone="green">{activeSignalsCount} ACTIVE SIGNALS</Badge>
+          </div>
+        }
       />
 
       {!isDepositCompleted && (
         <DepositGateNotice
           featureTitle="VIP Market Signals Locked · $50 Deposit Required"
-          featureDescription="Actionable setups with entry, stop-loss, take-profit, trade reasoning, and automatic copy-trading are reserved for students with a confirmed $50 USD Exness deposit."
+          featureDescription="Actionable setups with entry, stop-loss, TP1–TP5 targets, trade reasoning, and one-click Exness copy-trading are reserved for students with a confirmed $50 USD Exness deposit."
         />
+      )}
+
+      {/* Live Market Price Ticker Strip */}
+      {Object.keys(marketPrices).length > 0 && (
+        <div className="mb-5 p-3.5 rounded-2xl bg-[#10141d] border border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] font-bold">
+              LIVE MARKET FEED (AUTO-TRIGGERS TP1–TP5)
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+            {["EUR / USD", "GBP / USD", "XAU / USD", "USD / JPY", "GBP / JPY"].map((sym) =>
+              marketPrices[sym] ? (
+                <span
+                  key={sym}
+                  className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[#cfd7e4]"
+                >
+                  {sym}: <strong className="text-white">{marketPrices[sym]}</strong>
+                </span>
+              ) : null
+            )}
+          </div>
+        </div>
       )}
 
       <Card className="copy-banner">
@@ -3688,81 +4518,100 @@ export function SignalFeedPage() {
         <Link to="/settings">Manage risk settings</Link>
       </Card>
 
-      {/* Built-in Lot Size & Risk Calculator Bar */}
-      <Card className="mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02]">
-              INTERACTIVE POSITION SIZE &amp; RISK CALCULATOR
+      {/* Redesigned Interactive Position Size & Risk Calculator Card */}
+      <section className="mb-6 rounded-2xl bg-gradient-to-b from-[#161b26] to-[#10141d] border border-white/10 p-6 sm:p-7 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-5 border-b border-white/10">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <span className="w-11 h-11 rounded-xl bg-[#ffde02]/15 border border-[#ffde02]/30 text-[#ffde02] flex items-center justify-center shrink-0">
+              <Calculator size={20} />
             </span>
-            <h3 className="text-base font-bold text-white mt-0.5">
-              Calculate Exact Standard Lots Before Entering Any Signal
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-center">
-            <div>
-              <label className="block text-[10px] font-mono uppercase text-[#8c95a6]">
-                Equity ($ USD)
-              </label>
-              <input
-                type="number"
-                value={calcBalance}
-                onChange={(e) => setCalcBalance(e.target.value)}
-                className="w-full bg-[#141821] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white mt-1"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-mono uppercase text-[#8c95a6]">
-                Risk (%)
-              </label>
-              <input
-                type="number"
-                step="0.25"
-                value={calcRiskPct}
-                onChange={(e) => setCalcRiskPct(e.target.value)}
-                className="w-full bg-[#141821] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white mt-1"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-mono uppercase text-[#8c95a6]">
-                Stop Distance (Pips)
-              </label>
-              <input
-                type="number"
-                value={calcStopPips}
-                onChange={(e) => setCalcStopPips(e.target.value)}
-                className="w-full bg-[#141821] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white mt-1"
-              />
-            </div>
-            <div className="p-2.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-center">
-              <span className="text-[10px] font-mono uppercase text-[#ffde02] block">
-                RECOMMENDED SIZE
+            <div className="space-y-1">
+              <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffde02] block">
+                INTERACTIVE POSITION SIZE &amp; RISK CALCULATOR
               </span>
-              <strong className="text-sm font-mono font-extrabold text-white">
-                {lotCalc.recommendedLots} Lots
-              </strong>
-              <small className="block text-[10px] font-mono text-[#9aa4b5]">
-                Risk: ${lotCalc.riskUsd}
-              </small>
+              <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-snug m-0">
+                Calculate Exact Standard Lots Before Entering Any Signal
+              </h3>
             </div>
+          </div>
+          <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-[#cfd7e4] self-start md:self-auto">
+            <span>Max Risk:</span>
+            <strong className="text-[#ffde02]">${lotCalc.riskUsd.toFixed(2)} USD</strong>
+            <span>({calcRiskPct || 1}%)</span>
           </div>
         </div>
-      </Card>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5 items-stretch">
+          <div className="p-4 rounded-xl bg-[#0d1017] border border-white/10 flex flex-col justify-between">
+            <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+              Account Equity ($ USD)
+            </label>
+            <input
+              type="number"
+              value={calcBalance}
+              onChange={(e) => setCalcBalance(e.target.value)}
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+            />
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#0d1017] border border-white/10 flex flex-col justify-between">
+            <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+              Risk Per Trade (%)
+            </label>
+            <input
+              type="number"
+              step="0.25"
+              value={calcRiskPct}
+              onChange={(e) => setCalcRiskPct(e.target.value)}
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+            />
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#0d1017] border border-white/10 flex flex-col justify-between">
+            <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+              Stop Distance (Pips)
+            </label>
+            <input
+              type="number"
+              value={calcStopPips}
+              onChange={(e) => setCalcStopPips(e.target.value)}
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+            />
+          </div>
+
+          <div className="p-4 rounded-xl bg-gradient-to-br from-[#ffde02]/20 to-[#ffde02]/5 border-2 border-[#ffde02]/50 flex flex-col justify-center text-center">
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffde02] block">
+              RECOMMENDED LOT SIZE
+            </span>
+            <strong className="text-2xl font-mono font-extrabold text-white mt-1">
+              {lotCalc.recommendedLots.toFixed(2)} Lots
+            </strong>
+            <small className="block text-[11px] font-mono text-[#cfd7e4] mt-0.5">
+              Risking ${lotCalc.riskUsd.toFixed(2)} over {calcStopPips || 30} pips
+            </small>
+          </div>
+        </div>
+      </section>
 
       {copyFeedback && (
-        <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
-          <CheckCircle2 size={15} />
-          <span>{copyFeedback}</span>
+        <div className="mb-4 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+            <span>{copyFeedback}</span>
+          </div>
+          <Link to="/trades" className="text-[#ffde02] font-bold hover:underline shrink-0">
+            View in My Trades →
+          </Link>
         </div>
       )}
 
       <div className="tabs">
         {(
           [
-            ["ALL", `All signals (${signals.length})`],
+            ["ALL", `All Admin Signals (${signals.length})`],
             ["ACTIVE", `Active (${activeSignalsCount})`],
-            ["CLOSED", "Closed"],
-            ["WINS", "Hit TP Wins"],
+            ["CLOSED", "Closed / Completed"],
+            ["WINS", "TP Hits"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -3776,66 +4625,128 @@ export function SignalFeedPage() {
         ))}
       </div>
 
-      <div className="signal-feed">
-        {filteredSignals.map((s) => (
-          <Link to={isDepositCompleted ? `/signals/${s.id}` : "#"} key={s.id}>
-            <i className={s.direction === "BUY" ? "buy" : "sell"}>
-              <Icon name="trend" />
-            </i>
-            <div>
-              <span>
-                <h2>{s.pair}</h2>
-                <Badge tone={s.direction === "BUY" ? "green" : "red"}>{s.direction}</Badge>
-                <Badge
-                  tone={
-                    s.status === "ACTIVE"
-                      ? "yellow"
-                      : s.status === "HIT TP"
-                      ? "green"
-                      : "gray"
-                  }
-                >
-                  {s.status}
-                </Badge>
-                <span className="text-xs font-mono text-[#8c95a6]">
-                  {s.timeframe} · {new Date(s.createdAt).toLocaleString()}
-                </span>
-              </span>
-              <p>{s.commentary}</p>
-              {isDepositCompleted ? (
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="levels">
-                    <span>
-                      ENTRY<b>{s.entry}</b>
+      {filteredSignals.length === 0 ? (
+        <Card className="p-8 text-center space-y-2 border border-dashed border-white/15 my-4">
+          <Target size={30} className="mx-auto text-[#ffde02]" />
+          <h3 className="text-base font-bold text-white">No Signals Posted by Admin Yet</h3>
+          <p className="text-xs text-[#9aa4b5] max-w-md mx-auto">
+            Only real signals posted by Pastor Mike in the Admin Console appear here. When a signal is posted, its live market price and TP1–TP5 targets will track automatically.
+          </p>
+        </Card>
+      ) : (
+        <div className="signal-feed">
+          {filteredSignals.map((s) => {
+            const livePrice = marketPrices[s.pair];
+            const tpList =
+              s.tpLevels && s.tpLevels.length > 0
+                ? s.tpLevels
+                : [{ level: 1, label: "TP1", price: s.tp, hit: s.status === "HIT TP" }];
+
+            return (
+              <Link to={isDepositCompleted ? `/signals/${s.id}` : "#"} key={s.id}>
+                <i className={s.direction === "BUY" ? "buy" : "sell"}>
+                  <Icon name="trend" />
+                </i>
+                <div>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <h2>{s.pair}</h2>
+                    <Badge tone={s.direction === "BUY" ? "green" : "red"}>
+                      {s.direction}
+                    </Badge>
+                    <Badge
+                      tone={
+                        s.status === "ALL TPs HIT" || s.status === "HIT TP"
+                          ? "green"
+                          : s.status === "PARTIAL TP"
+                          ? "yellow"
+                          : s.status === "HIT SL"
+                          ? "red"
+                          : "yellow"
+                      }
+                    >
+                      {s.status}
+                    </Badge>
+                    {livePrice && (
+                      <span className="px-2 py-0.5 rounded bg-white/10 text-[11px] font-mono text-white">
+                        Live Market: <strong className="text-[#ffde02]">{livePrice}</strong>
+                      </span>
+                    )}
+                    <span className="text-xs font-mono text-[#8c95a6]">
+                      {s.timeframe} · {new Date(s.createdAt).toLocaleString()}
                     </span>
-                    <span>
-                      STOP LOSS<b className="negative">{s.sl}</b>
-                    </span>
-                    <span>
-                      TAKE PROFIT<b className="positive">{s.tp}</b>
-                    </span>
-                    <span>
-                      RISK / REWARD<b>{s.rr}</b>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => void handleExecuteSignalToTrades(s, e)}
-                    className="px-3.5 py-2 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
-                  >
-                    Copy &amp; Log ({lotCalc.recommendedLots} Lots)
-                  </button>
+                  </span>
+                  <p>{s.commentary}</p>
+                  {isDepositCompleted ? (
+                    <div className="space-y-3 mt-2">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="levels">
+                          <span>
+                            ENTRY<b>{s.entry}</b>
+                          </span>
+                          <span>
+                            STOP LOSS<b className="negative">{s.sl}</b>
+                          </span>
+                          <span>
+                            PRIMARY TP1<b className="positive">{s.tp}</b>
+                          </span>
+                          <span>
+                            RISK / REWARD<b>{s.rr}</b>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setCopyModalSignal(s);
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0"
+                        >
+                          Copy &amp; Log Trade
+                        </button>
+                      </div>
+
+                      {/* Multi-TP (TP1 to TP5) Status Pills */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {tpList.map((lvl) => (
+                          <span
+                            key={lvl.level}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border ${
+                              lvl.hit
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                : "bg-white/5 text-[#b4bccb] border-white/10"
+                            }`}
+                          >
+                            {lvl.label}: {lvl.price} {lvl.hit ? "✓ HIT" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-amber-400 font-bold mt-2 flex items-center gap-1.5">
+                      <Lock size={12} /> Entry, SL &amp; TP1–TP5 locked ($50 deposit needed)
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-xs text-amber-400 font-bold mt-2 flex items-center gap-1.5">
-                  <Lock size={12} /> Entry, SL &amp; TP locked ($50 deposit needed)
-                </div>
-              )}
-            </div>
-            <Icon name="arrow" />
-          </Link>
-        ))}
-      </div>
+                <Icon name="arrow" />
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {copyModalSignal && (
+        <CopySignalToExnessModal
+          signal={copyModalSignal}
+          student={student}
+          defaultLots={lotCalc.recommendedLots}
+          onClose={() => setCopyModalSignal(null)}
+          onCopied={(msg) => {
+            setCopyModalSignal(null);
+            setCopyFeedback(msg);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -3846,6 +4757,7 @@ export function SignalDetailPage() {
   const student = useCurrentStudent();
   const syncTick = usePortalDataSync();
   const [signals, setSignals] = useState<TradingSignalItem[]>(getCachedSignals());
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
 
   useEffect(() => {
@@ -3867,25 +4779,21 @@ export function SignalDetailPage() {
     );
   }
 
-  if (!s) return null;
-
-  async function handleLogSignal() {
-    await addStudentTradeInDb({
-      studentEmail: student.email,
-      exnessAccountId: student.exnessId || "LINKED",
-      pair: s.pair,
-      direction: s.direction,
-      lots: lotCalc.recommendedLots,
-      openPrice: s.entry,
-      closePrice: s.status === "HIT TP" ? s.tp : s.entry,
-      pnlUsd: s.status === "HIT TP" ? Number((lotCalc.riskUsd * 2.2).toFixed(2)) : 0,
-      returnPct: s.status === "HIT TP" ? 2.2 : 0,
-      status: s.status === "HIT TP" ? "WIN" : "OPEN",
-      source: "SIGNAL_COPY",
-      notes: `Executed from Signal Detail (${s.rr})`,
-    });
-    nav("/trades");
+  if (!s) {
+    return (
+      <Card className="p-8 text-center space-y-3 my-6">
+        <h2 className="text-lg font-bold text-white">Signal Not Found</h2>
+        <Link className="p-button primary rounded-full" to="/signals">
+          Back to VIP Signals
+        </Link>
+      </Card>
+    );
   }
+
+  const tpList =
+    s.tpLevels && s.tpLevels.length > 0
+      ? s.tpLevels
+      : [{ level: 1, label: "TP1", price: s.tp, hit: s.status === "HIT TP" }];
 
   return (
     <>
@@ -3910,9 +4818,19 @@ export function SignalDetailPage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <Badge>{s.status}</Badge>
-          <Button onClick={() => void handleLogSignal()}>
-            Execute &amp; Log to My Trades ({lotCalc.recommendedLots} Lots)
+          <Badge
+            tone={
+              s.status === "ALL TPs HIT" || s.status === "HIT TP"
+                ? "green"
+                : s.status === "HIT SL"
+                ? "red"
+                : "yellow"
+            }
+          >
+            {s.status}
+          </Badge>
+          <Button onClick={() => setCopyModalOpen(true)}>
+            Copy &amp; Log to Exness ({lotCalc.recommendedLots} Lots)
           </Button>
         </div>
       </div>
@@ -3922,7 +4840,7 @@ export function SignalDetailPage() {
             {[
               ["ENTRY PRICE", s.entry],
               ["STOP LOSS", s.sl],
-              ["TAKE PROFIT", s.tp],
+              ["PRIMARY TP1", s.tp],
               ["RISK / REWARD", s.rr],
             ].map((x, i) => (
               <span key={x[0]}>
@@ -3931,7 +4849,37 @@ export function SignalDetailPage() {
               </span>
             ))}
           </Card>
-          <Card className="market-chart">
+
+          {/* All Configured Multi-TP Targets Card */}
+          <Card className="mt-4">
+            <h3 className="text-sm font-bold text-white mb-3">
+              Multi-Target Take Profit Levels (TP1 – TP{tpList.length})
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {tpList.map((lvl) => (
+                <div
+                  key={lvl.level}
+                  className={`p-3 rounded-xl border text-center ${
+                    lvl.hit
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-[#141821] border-white/10 text-white"
+                  }`}
+                >
+                  <span className="text-[10px] font-mono uppercase text-[#ffde02] block">
+                    {lvl.label}
+                  </span>
+                  <strong className="text-sm font-mono font-bold block mt-0.5">
+                    {lvl.price}
+                  </strong>
+                  <small className="text-[10px] font-mono block mt-1">
+                    {lvl.hit ? "✓ TARGET HIT" : "ACTIVE TARGET"}
+                  </small>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="market-chart mt-4">
             <h3>
               {s.pair} · {s.timeframe} Execution Map
             </h3>
@@ -3964,6 +4912,19 @@ export function SignalDetailPage() {
           </Card>
         </div>
       </div>
+
+      {copyModalOpen && (
+        <CopySignalToExnessModal
+          signal={s}
+          student={student}
+          defaultLots={lotCalc.recommendedLots}
+          onClose={() => setCopyModalOpen(false)}
+          onCopied={() => {
+            setCopyModalOpen(false);
+            nav("/trades");
+          }}
+        />
+      )}
     </>
   );
 }
@@ -5324,14 +6285,22 @@ export function VerificationPage() {
 
 export function SignalFormPage() {
   const nav = useNavigate();
+  const syncTick = usePortalDataSync();
   const [signals, setSignals] = useState<TradingSignalItem[]>(getCachedSignals());
+  const [livePrices, setLivePrices] = useState<Record<string, number>>(getCachedMarketPrices());
+  const [evaluatingMarket, setEvaluatingMarket] = useState(false);
+
   const [pair, setPair] = useState("GBP / USD");
   const [direction, setDirection] = useState<"BUY" | "SELL">("BUY");
   const [timeframe, setTimeframe] = useState("H1 / M15");
   const [entry, setEntry] = useState("1.2674");
   const [sl, setSl] = useState("1.2620");
-  const [tp, setTp] = useState("1.2740");
-  const [rr, setRr] = useState("1 : 2.4");
+  const [tp1, setTp1] = useState("1.2715");
+  const [tp2, setTp2] = useState("1.2740");
+  const [tp3, setTp3] = useState("1.2775");
+  const [tp4, setTp4] = useState("");
+  const [tp5, setTp5] = useState("");
+  const [rr, setRr] = useState("1 : 2.8");
   const [commentary, setCommentary] = useState(
     "London liquidity sweep followed by M15 bullish market structure shift (MSS) and displacement."
   );
@@ -5341,18 +6310,32 @@ export function SignalFormPage() {
 
   useEffect(() => {
     void fetchSignalsFromDb().then(setSignals);
-  }, []);
+    void fetchLiveMarketPrices().then(setLivePrices);
+  }, [syncTick]);
+
+  const configuredTpLevels = [
+    { level: 1, label: "TP1", price: tp1.trim(), hit: false },
+    { level: 2, label: "TP2", price: tp2.trim(), hit: false },
+    { level: 3, label: "TP3", price: tp3.trim(), hit: false },
+    { level: 4, label: "TP4", price: tp4.trim(), hit: false },
+    { level: 5, label: "TP5", price: tp5.trim(), hit: false },
+  ].filter((t) => t.price.length > 0);
 
   async function handleConfirmPublish() {
     setPublishing(true);
+    const primaryTp = tp1.trim() || tp2.trim() || "1.2740";
     await createSignalInDb({
       pair: pair.trim(),
       direction,
       status: "ACTIVE",
       entry: entry.trim(),
       sl: sl.trim(),
-      tp: tp.trim(),
-      rr: rr.trim() || "1 : 2.4",
+      tp: primaryTp,
+      tpLevels:
+        configuredTpLevels.length > 0
+          ? configuredTpLevels
+          : [{ level: 1, label: "TP1", price: primaryTp, hit: false }],
+      rr: rr.trim() || "1 : 2.8",
       timeframe: timeframe.trim() || "H1 / M15",
       commentary: commentary.trim(),
       author: "Pastor Mike",
@@ -5363,13 +6346,56 @@ export function SignalFormPage() {
     setPosted(true);
   }
 
+  async function handleEvaluateLiveMarket() {
+    setEvaluatingMarket(true);
+    const prices = await fetchLiveMarketPrices();
+    setLivePrices(prices);
+    await evaluateSignalsAgainstLiveMarket();
+    const updated = await fetchSignalsFromDb();
+    setSignals(updated);
+    setEvaluatingMarket(false);
+  }
+
   return (
     <>
       <Header
-        eyebrow="SIGNAL MANAGEMENT · public.trading_signals"
-        title="Post & Manage VIP Market Signals"
-        copy="Signals published here sync immediately to the Client Overview Latest Signal card and the Student Signal Feed."
+        eyebrow="SIGNAL MANAGEMENT · public.trading_signals · TP1 TO TP5"
+        title="Post & Manage Multi-TP VIP Market Signals"
+        copy="Configure up to 5 Take-Profit targets (TP1–TP5). Signals automatically evaluate against live market prices and send real-time alerts to student topbar bells when TP1, TP2, TP3, TP4, TP5, or SL hits."
+        action={
+          <button
+            type="button"
+            disabled={evaluatingMarket}
+            onClick={() => void handleEvaluateLiveMarket()}
+            className="px-4 py-2.5 rounded-full bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshCw size={14} className={evaluatingMarket ? "animate-spin" : ""} />
+            {evaluatingMarket ? "Checking Market..." : "Sync Live Market Prices & Auto-Check TPs"}
+          </button>
+        }
       />
+
+      {/* Live Market Feed Strip */}
+      <div className="mb-6 rounded-2xl bg-[#121620] border border-white/10 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+            LIVE MARKET ENGINE ACTIVE (AUTO-TRIGGERS TP1–TP5 &amp; SL ALERTS)
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {Object.entries(livePrices).map(([sym, pr]) => (
+            <span
+              key={sym}
+              className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs font-mono text-white"
+            >
+              <strong className="text-[#9aa4b5] mr-1.5">{sym}:</strong>
+              <span className="text-[#ffde02] font-bold">{pr}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
       <form
         className="signal-form"
         onSubmit={(e) => {
@@ -5428,21 +6454,66 @@ export function SignalFormPage() {
           <div className="form-section">
             <i>02</i>
             <div>
-              <h2>Trade Execution Levels</h2>
+              <h2>Entry, Stop-Loss &amp; Up to 5 Take-Profit Targets (TP1 – TP5)</h2>
               <div className="form-grid three">
                 <label>
-                  Entry Price
+                  Entry Price *
                   <input value={entry} onChange={(e) => setEntry(e.target.value)} required />
                 </label>
                 <label>
-                  Stop-Loss (Invalidation)
+                  Stop-Loss (Invalidation) *
                   <input value={sl} onChange={(e) => setSl(e.target.value)} required />
                 </label>
                 <label>
-                  Take-Profit Target
-                  <input value={tp} onChange={(e) => setTp(e.target.value)} required />
+                  TP1 Target (Primary) *
+                  <input
+                    value={tp1}
+                    onChange={(e) => setTp1(e.target.value)}
+                    placeholder="e.g. 1.2715"
+                    required
+                  />
                 </label>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3">
+                <label className="text-xs text-[#9aa4b5]">
+                  TP2 Target (Optional)
+                  <input
+                    value={tp2}
+                    onChange={(e) => setTp2(e.target.value)}
+                    placeholder="e.g. 1.2740"
+                    className="mt-1 w-full bg-[#141821] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white"
+                  />
+                </label>
+                <label className="text-xs text-[#9aa4b5]">
+                  TP3 Target (Optional)
+                  <input
+                    value={tp3}
+                    onChange={(e) => setTp3(e.target.value)}
+                    placeholder="e.g. 1.2775"
+                    className="mt-1 w-full bg-[#141821] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white"
+                  />
+                </label>
+                <label className="text-xs text-[#9aa4b5]">
+                  TP4 Target (Optional)
+                  <input
+                    value={tp4}
+                    onChange={(e) => setTp4(e.target.value)}
+                    placeholder="Optional TP4"
+                    className="mt-1 w-full bg-[#141821] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white"
+                  />
+                </label>
+                <label className="text-xs text-[#9aa4b5]">
+                  TP5 Target (Runner)
+                  <input
+                    value={tp5}
+                    onChange={(e) => setTp5(e.target.value)}
+                    placeholder="Optional TP5"
+                    className="mt-1 w-full bg-[#141821] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white"
+                  />
+                </label>
+              </div>
+
               <div className="rr mt-3">
                 <span>RISK / REWARD RATIO</span>
                 <input
@@ -5450,7 +6521,7 @@ export function SignalFormPage() {
                   onChange={(e) => setRr(e.target.value)}
                   className="bg-transparent border border-white/10 rounded-lg px-2.5 py-1 text-xs font-mono text-white w-28"
                 />
-                <Badge tone="green">INSTITUTIONAL R:R</Badge>
+                <Badge tone="green">{configuredTpLevels.length} TP TARGETS CONFIGURED</Badge>
               </div>
             </div>
           </div>
@@ -5472,15 +6543,15 @@ export function SignalFormPage() {
         <Card className="publish">
           <h3>Before you publish</h3>
           <p>
-            <Icon name="check" /> Syncs to <code>public.trading_signals</code> in Supabase
+            <Icon name="check" /> Syncs to <code>public.trading_signals</code> with TP1–TP5 targets
           </p>
           <p>
-            <Icon name="check" /> Updates Latest Signal on all Client Dashboards
+            <Icon name="check" /> Auto-notifies student Alert Bells when published &amp; when each TP hits
           </p>
           <div>
             <Icon name="trades" />
             <span>
-              <b>Automatic copying ready</b>Students can one-click execute &amp; log this setup.
+              <b>Exness Copy &amp; Custom TP Ready</b>Students can select any TP or set custom TP &amp; Lot Size.
             </span>
           </div>
           <Button type="submit">Review &amp; Publish Signal</Button>
@@ -5489,91 +6560,140 @@ export function SignalFormPage() {
 
       {/* Active & Past Signals Management Table */}
       <Card className="data-card mt-8">
-        <div className="p-5 border-b border-white/10">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
-            LIVE DATABASE FEED · public.trading_signals
+        <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+              LIVE DATABASE FEED · public.trading_signals
+            </span>
+            <h3 className="text-lg font-bold text-white mt-0.5">
+              Published VIP Signals ({signals.length})
+            </h3>
+          </div>
+          <span className="text-xs text-[#9aa4b5]">
+            Click any TP badge below to manually mark TP1–TP5 hit &amp; send instant student alerts
           </span>
-          <h3 className="text-lg font-bold text-white mt-0.5">
-            Published VIP Signals ({signals.length})
-          </h3>
         </div>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Pair</th>
+                <th>Pair &amp; Market</th>
                 <th>Direction</th>
-                <th>Entry / SL / TP</th>
-                <th>R:R</th>
+                <th>Entry / SL</th>
+                <th>Multi-TP Targets (Click to Trigger Hit Alert)</th>
                 <th>Status</th>
                 <th>Update Outcome</th>
               </tr>
             </thead>
             <tbody>
-              {signals.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <b>{s.pair}</b>
-                    <small className="block text-[10px] font-mono text-[#8c95a6]">
-                      {s.timeframe}
-                    </small>
-                  </td>
-                  <td>
-                    <Badge tone={s.direction === "BUY" ? "green" : "red"}>{s.direction}</Badge>
-                  </td>
-                  <td className="font-mono text-xs">
-                    {s.entry} / <span className="text-red-400">{s.sl}</span> /{" "}
-                    <span className="text-emerald-400">{s.tp}</span>
-                  </td>
-                  <td className="font-mono text-xs">{s.rr}</td>
-                  <td>
-                    <Badge
-                      tone={
-                        s.status === "ACTIVE"
-                          ? "yellow"
-                          : s.status === "HIT TP"
-                          ? "green"
-                          : "gray"
-                      }
-                    >
-                      {s.status}
-                    </Badge>
-                  </td>
-                  <td>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {(["ACTIVE", "HIT TP", "HIT SL", "CLOSED"] as const).map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() =>
-                            void updateSignalStatusInDb(s.id, st).then(() =>
-                              fetchSignalsFromDb().then(setSignals)
-                            )
-                          }
-                          className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                            s.status === st
-                              ? "bg-[#ffde02] text-black"
-                              : "bg-white/10 text-white hover:bg-white/15"
-                          }`}
-                        >
-                          {st}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void deleteSignalFromDb(s.id).then(() =>
-                            fetchSignalsFromDb().then(setSignals)
-                          )
-                        }
-                        className="px-2 py-1 rounded bg-red-500/20 text-red-300 text-[10px] font-bold cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                    </div>
+              {signals.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-8 text-xs text-[#8f98a8]">
+                    No signals posted yet. Publish your first signal above to broadcast it to all client dashboards.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                signals.map((s) => {
+                  const tpList =
+                    s.tpLevels && s.tpLevels.length > 0
+                      ? s.tpLevels
+                      : [{ level: 1, label: "TP1", price: s.tp, hit: s.status === "ALL TP HIT" || s.status === "HIT TP" }];
+                  const mktPrice = livePrices[s.pair] || s.lastMarketPrice;
+
+                  return (
+                    <tr key={s.id}>
+                      <td>
+                        <b>{s.pair}</b>
+                        <small className="block text-[10px] font-mono text-[#8c95a6]">
+                          {s.timeframe} {mktPrice ? `· Live: ${mktPrice}` : ""}
+                        </small>
+                      </td>
+                      <td>
+                        <Badge tone={s.direction === "BUY" ? "green" : "red"}>{s.direction}</Badge>
+                      </td>
+                      <td className="font-mono text-xs">
+                        <div>Entry: <strong className="text-white">{s.entry}</strong></div>
+                        <div>SL: <span className="text-red-400">{s.sl}</span></div>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tpList.map((lvl) => (
+                            <button
+                              key={lvl.level}
+                              type="button"
+                              onClick={() =>
+                                void triggerSignalTpLevelInDb(s.id, lvl.level, !lvl.hit).then(() =>
+                                  fetchSignalsFromDb().then(setSignals)
+                                )
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition cursor-pointer ${
+                                lvl.hit
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                  : "bg-white/5 text-[#d0d7e3] border-white/10 hover:border-[#ffde02]/50"
+                              }`}
+                              title="Click to toggle TP hit and broadcast alert to students"
+                            >
+                              {lvl.label}: {lvl.price} {lvl.hit ? "✓ HIT" : ""}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <Badge
+                          tone={
+                            s.status === "ACTIVE"
+                              ? "yellow"
+                              : s.status === "ALL TP HIT" ||
+                                s.status === "HIT TP" ||
+                                s.status === "PARTIAL TP"
+                              ? "green"
+                              : s.status === "HIT SL"
+                              ? "red"
+                              : "gray"
+                          }
+                        >
+                          {s.status}
+                        </Badge>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(["ACTIVE", "PARTIAL TP", "ALL TP HIT", "HIT SL", "CLOSED"] as const).map(
+                            (st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() =>
+                                  void updateSignalStatusInDb(s.id, st).then(() =>
+                                    fetchSignalsFromDb().then(setSignals)
+                                  )
+                                }
+                                className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
+                                  s.status === st
+                                    ? "bg-[#ffde02] text-black"
+                                    : "bg-white/10 text-white hover:bg-white/15"
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            )
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void deleteSignalFromDb(s.id).then(() =>
+                                fetchSignalsFromDb().then(setSignals)
+                              )
+                            }
+                            className="px-2 py-1 rounded bg-red-500/20 text-red-300 text-[10px] font-bold cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -5587,9 +6707,9 @@ export function SignalFormPage() {
                 <i className="modal-icon success">
                   <Icon name="check" />
                 </i>
-                <h2>Signal Published to Database!</h2>
+                <h2>Signal Published &amp; Alerts Sent!</h2>
                 <p>
-                  {pair} ({direction}) is now live on the Student Overview and VIP Signal Feed.
+                  {pair} ({direction}) with {configuredTpLevels.length} TP target(s) is now live on the Student Overview, VIP Signal Feed, and Topbar Alert Bell.
                 </p>
                 <div className="flex justify-center gap-3">
                   <Button onClick={() => setModal(false)}>Done</Button>
@@ -5604,10 +6724,11 @@ export function SignalFormPage() {
                   <Icon name="signal" />
                 </i>
                 <h2>
-                  Publish {pair} ({direction}) Signal?
+                  Publish {pair} ({direction}) Multi-TP Signal?
                 </h2>
                 <p>
-                  Entry: {entry} · SL: {sl} · TP: {tp} ({rr}). This immediately updates all student dashboards.
+                  Entry: {entry} · SL: {sl} · Targets:{" "}
+                  {configuredTpLevels.map((t) => `${t.label} ${t.price}`).join(" / ")} ({rr}). This immediately updates all student dashboards and triggers a notification alert.
                 </p>
                 <div>
                   <Button variant="secondary" onClick={() => setModal(false)}>

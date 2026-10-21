@@ -400,7 +400,13 @@ function exnessSyncPlugin(): Plugin {
   const handler = async (req: any, res: any, next: any) => {
     const rawUrl = req.url || ''
     const pathname = rawUrl.split('?')[0]
-    if (!pathname.startsWith('/api/exness/')) return next()
+    if (
+      !pathname.startsWith('/api/exness/') &&
+      !pathname.startsWith('/api/quiz/') &&
+      !pathname.startsWith('/api/market/')
+    ) {
+      return next()
+    }
 
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -414,6 +420,34 @@ function exnessSyncPlugin(): Plugin {
     }
 
     try {
+      if (pathname === '/api/market/prices') {
+        const { getLiveMarketPricesServer } = await import('./src/server/pdfQuizEngine')
+        const prices = await getLiveMarketPricesServer()
+        res.statusCode = 200
+        res.end(JSON.stringify({ success: true, prices, timestamp: new Date().toISOString() }))
+        return
+      }
+
+      if (pathname === '/api/quiz/generate-from-pdf' && req.method === 'POST') {
+        let body = ''
+        req.on('data', (chunk: any) => {
+          body += chunk
+        })
+        req.on('end', async () => {
+          try {
+            const parsed = JSON.parse(body || '{}')
+            const { generateQuizFromPdfServer } = await import('./src/server/pdfQuizEngine')
+            const result = await generateQuizFromPdfServer(parsed)
+            res.statusCode = 200
+            res.end(JSON.stringify(result))
+          } catch (e: any) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ success: false, message: e.message }))
+          }
+        })
+        return
+      }
+
       const { syncLiveExnessWithSupabase, connectExistingExnessClientInDb } = await import(
         './src/server/exnessSync'
       )
