@@ -44,6 +44,11 @@ export interface ExnessStudent {
   streakDays?: number;
   bestStreakDays?: number;
   lastActiveDate?: string;
+  subscriptionTier?: "free_trial" | "expired_free" | "monthly_20" | "permanent_100";
+  trialEndsAt?: string;
+  subscriptionEndsAt?: string;
+  accountManagementDepositVerified?: boolean;
+  merchClaimed?: boolean;
 }
 
 export interface ExnessPartnerClientRecord {

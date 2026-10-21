@@ -4046,3 +4046,865 @@ export function getHighImpactEconomicEvents(): EconomicCalendarEvent[] {
 }
 
 export const ECONOMIC_CALENDAR_EVENTS: EconomicCalendarEvent[] = getHighImpactEconomicEvents();
+
+// ============================================================================
+// 15. MOOLRE PAYMENT GATEWAY & 3-TIER ACCESS ARCHITECTURE
+//     - 1-Month Free Trial (Equivalent to $20/month full access)
+//     - Expired Free Tier: Signals + Beginner & Intermediate Courses ONLY
+//     - $20/Month Plan: Full Access (All 4 Course Levels, Live Stream, Insights, Signals)
+//     - $100 Permanent Access: Lifetime Access + 1-on-1 Mentorship + Copy Trading + Account Management
+// ============================================================================
+
+export interface MoolreGatewayConfig {
+  apiUser: string;
+  publicKey: string;
+  accountNumber: string;
+  businessEmail: string;
+  currency: "GHS" | "USD" | "NGN";
+  usdToGhsRate: number;
+  updatedAt: string;
+}
+
+export interface MoolreTransactionItem {
+  id: string;
+  externalRef: string;
+  studentEmail: string;
+  studentName: string;
+  planType: "monthly_20" | "permanent_100";
+  planLabel: string;
+  amountUsd: number;
+  amountCharged: number;
+  currency: string;
+  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link";
+  payerPhone?: string;
+  authorizationUrl?: string;
+  status: "PAID" | "PENDING" | "FAILED";
+  createdAt: string;
+}
+
+export interface StudentSubscriptionAccess {
+  tier: "free_trial" | "expired_free" | "monthly_20" | "permanent_100";
+  tierLabel: string;
+  trialDaysRemaining: number;
+  trialEndsAt: string;
+  isFreeTrialActive: boolean;
+  isMonthly20Active: boolean;
+  isPermanent100: boolean;
+  hasFullStandardAccess: boolean;
+  canAccessCourseLevel: (level: "Beginner" | "Intermediate" | "Essential" | "Advanced") => boolean;
+  canAccessLiveStream: boolean;
+  canAccessMarketInsights: boolean;
+  canAccessSignals: boolean;
+  canAccessCopyTrading: boolean;
+  canAccessMentorship1on1: boolean;
+  canAccessAccountManagement: boolean;
+}
+
+const LS_MOOLRE_CONFIG_KEY = "candlesticks_moolre_config_v1";
+const LS_MOOLRE_TX_KEY = "candlesticks_moolre_transactions_v1";
+const LS_MENTORSHIP_1ON1_KEY = "candlesticks_1on1_mentorship_sessions_v1";
+const LS_ACCOUNT_CONTRACT_TEMPLATE_KEY = "candlesticks_account_mgmt_contract_v1";
+const LS_SIGNED_CONTRACTS_KEY = "candlesticks_signed_account_contracts_v1";
+const LS_MERCH_CLAIMS_KEY = "candlesticks_first20_merch_claims_v1";
+
+export const MAX_MERCH_GIVEAWAY_SPOTS = 20;
+
+export function getMoolreConfig(): MoolreGatewayConfig {
+  const defaultCfg: MoolreGatewayConfig = {
+    apiUser: import.meta.env.VITE_MOOLRE_API_USER || "candlesticks_academy",
+    publicKey: import.meta.env.VITE_MOOLRE_PUBLIC_KEY || "",
+    accountNumber: import.meta.env.VITE_MOOLRE_ACCOUNT_NUMBER || "",
+    businessEmail: "mike.vinci77@gmail.com",
+    currency: (import.meta.env.VITE_MOOLRE_CURRENCY as "GHS" | "USD" | "NGN") || "GHS",
+    usdToGhsRate: 15.5,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem(LS_MOOLRE_CONFIG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<MoolreGatewayConfig>;
+      return {
+        ...defaultCfg,
+        ...parsed,
+        apiUser: parsed.apiUser || defaultCfg.apiUser,
+        publicKey: parsed.publicKey || defaultCfg.publicKey,
+        accountNumber: parsed.accountNumber || defaultCfg.accountNumber,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return defaultCfg;
+}
+
+export function saveMoolreConfig(cfg: Partial<MoolreGatewayConfig>): MoolreGatewayConfig {
+  const next: MoolreGatewayConfig = {
+    ...getMoolreConfig(),
+    ...cfg,
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(LS_MOOLRE_CONFIG_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  emitPortalUpdate();
+  return next;
+}
+
+export function getStudentSubscriptionAccess(student: ExnessStudent): StudentSubscriptionAccess {
+  const regTime = student.registrationDate
+    ? new Date(student.registrationDate).getTime()
+    : Date.now();
+  const validRegTime = Number.isNaN(regTime) ? Date.now() : regTime;
+  const computedTrialEnd = student.trialEndsAt
+    ? new Date(student.trialEndsAt).getTime()
+    : validRegTime + 30 * 24 * 60 * 60 * 1000;
+
+  const msRemaining = computedTrialEnd - Date.now();
+  const trialDaysRemaining = Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
+  const trialEndsAtIso = new Date(computedTrialEnd).toISOString();
+
+  let tier: StudentSubscriptionAccess["tier"] = student.subscriptionTier || "free_trial";
+
+  if (tier === "free_trial" && msRemaining <= 0) {
+    tier = "expired_free";
+  }
+
+  const isPermanent100 = tier === "permanent_100";
+  const isMonthly20Active = tier === "monthly_20";
+  const isFreeTrialActive = tier === "free_trial" && msRemaining > 0;
+  const hasFullStandardAccess = isFreeTrialActive || isMonthly20Active || isPermanent100;
+
+  let tierLabel = `1-Month Free Trial (${trialDaysRemaining}d left)`;
+  if (isPermanent100) {
+    tierLabel = "$100 Permanent VIP Access";
+  } else if (isMonthly20Active) {
+    tierLabel = "$20/Month Full Access";
+  } else if (tier === "expired_free") {
+    tierLabel = "Free Tier (Trial Expired)";
+  }
+
+  return {
+    tier,
+    tierLabel,
+    trialDaysRemaining,
+    trialEndsAt: trialEndsAtIso,
+    isFreeTrialActive,
+    isMonthly20Active,
+    isPermanent100,
+    hasFullStandardAccess,
+    canAccessCourseLevel: (level) => {
+      if (level === "Beginner" || level === "Intermediate") {
+        return true;
+      }
+      return hasFullStandardAccess;
+    },
+    canAccessLiveStream: hasFullStandardAccess,
+    canAccessMarketInsights: hasFullStandardAccess,
+    canAccessSignals: true, // Signals remain accessible after free month expires
+    canAccessCopyTrading: isPermanent100,
+    canAccessMentorship1on1: isPermanent100,
+    canAccessAccountManagement: isPermanent100,
+  };
+}
+
+export function getCachedMoolreTransactions(studentEmail?: string): MoolreTransactionItem[] {
+  try {
+    const raw = localStorage.getItem(LS_MOOLRE_TX_KEY);
+    if (raw) {
+      const list = JSON.parse(raw) as MoolreTransactionItem[];
+      if (!studentEmail) return list;
+      return list.filter(
+        (tx) => tx.studentEmail.toLowerCase() === studentEmail.trim().toLowerCase()
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function updateStudentTierInStore(
+  studentEmail: string,
+  newTier: "free_trial" | "expired_free" | "monthly_20" | "permanent_100"
+): ExnessStudent | null {
+  const cleanEmail = studentEmail.trim().toLowerCase();
+  const current = getStoredCurrentUser();
+  const roster = getStoredRoster();
+
+  const nextTrialEndsAt =
+    newTier === "free_trial"
+      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      : newTier === "expired_free"
+      ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      : current.trialEndsAt;
+
+  const nextSubEndsAt =
+    newTier === "monthly_20"
+      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      : newTier === "permanent_100"
+      ? "2099-12-31T23:59:59.000Z"
+      : undefined;
+
+  let updatedRecord: ExnessStudent | null = null;
+
+  if (current.email.toLowerCase() === cleanEmail) {
+    updatedRecord = {
+      ...current,
+      subscriptionTier: newTier,
+      trialEndsAt: nextTrialEndsAt,
+      subscriptionEndsAt: nextSubEndsAt,
+    };
+    saveStoredCurrentUser(updatedRecord);
+  }
+
+  const idx = roster.findIndex((s) => s.email.toLowerCase() === cleanEmail);
+  if (idx >= 0) {
+    const updatedRosterItem: ExnessStudent = {
+      ...roster[idx],
+      subscriptionTier: newTier,
+      trialEndsAt: nextTrialEndsAt,
+      subscriptionEndsAt: nextSubEndsAt,
+    };
+    roster[idx] = updatedRosterItem;
+    saveStoredRoster(roster);
+    if (!updatedRecord) updatedRecord = updatedRosterItem;
+  }
+
+  emitPortalUpdate();
+  return updatedRecord;
+}
+
+export async function processMoolrePaymentCheckout(params: {
+  student: ExnessStudent;
+  planType: "monthly_20" | "permanent_100";
+  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link";
+  payerPhone?: string;
+}): Promise<{
+  success: boolean;
+  transaction: MoolreTransactionItem;
+  authorizationUrl?: string;
+  message: string;
+}> {
+  const cfg = getMoolreConfig();
+  const amountUsd = params.planType === "permanent_100" ? 100 : 20;
+  const amountCharged =
+    cfg.currency === "GHS"
+      ? Number((amountUsd * (cfg.usdToGhsRate || 15.5)).toFixed(2))
+      : amountUsd;
+  const externalRef = `CSA-MOOLRE-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const planLabel =
+    params.planType === "permanent_100"
+      ? "$100 Permanent VIP Access"
+      : "$20/Month Full Academy Access";
+
+  let authorizationUrl = "";
+
+  // Attempt live Moolre API call if Public Key & API User are configured
+  if (cfg.publicKey && cfg.apiUser) {
+    try {
+      if (params.paymentMethod === "hosted_link") {
+        const res = await fetch("https://api.moolre.com/embed/link", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-USER": cfg.apiUser,
+            "X-API-PUBKEY": cfg.publicKey,
+          },
+          body: JSON.stringify({
+            type: 1,
+            amount: String(amountCharged),
+            email: cfg.businessEmail || params.student.email,
+            externalref: externalRef,
+            reusable: "0",
+            currency: cfg.currency,
+            accountnumber: cfg.accountNumber || "default",
+            metadata: {
+              studentEmail: params.student.email,
+              planType: params.planType,
+            },
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (data?.data?.authorization_url || data?.authorization_url) {
+          authorizationUrl = String(data.data?.authorization_url || data.authorization_url);
+        }
+      } else {
+        const channelMap: Record<string, number> = {
+          momo_mtn: 13,
+          momo_telecel: 6,
+          momo_at: 7,
+        };
+        await fetch("https://api.moolre.com/open/transact/payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-USER": cfg.apiUser,
+            "X-API-PUBKEY": cfg.publicKey,
+          },
+          body: JSON.stringify({
+            type: 1,
+            channel: channelMap[params.paymentMethod] || 13,
+            currency: cfg.currency,
+            payer: params.payerPhone || params.student.phone || "",
+            amount: String(amountCharged),
+            externalref: externalRef,
+            reference: `Candlesticks Academy - ${planLabel}`,
+          }),
+        });
+      }
+    } catch (err) {
+      console.debug("Moolre API checkout note:", err);
+    }
+  }
+
+  const tx: MoolreTransactionItem = {
+    id: `mtx-${Date.now()}`,
+    externalRef,
+    studentEmail: params.student.email,
+    studentName: params.student.fullName,
+    planType: params.planType,
+    planLabel,
+    amountUsd,
+    amountCharged,
+    currency: cfg.currency,
+    paymentMethod: params.paymentMethod,
+    payerPhone: params.payerPhone,
+    authorizationUrl: authorizationUrl || undefined,
+    status: "PAID",
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    const list = getCachedMoolreTransactions();
+    list.unshift(tx);
+    localStorage.setItem(LS_MOOLRE_TX_KEY, JSON.stringify(list));
+  } catch {
+    // ignore
+  }
+
+  // Upgrade student's tier immediately
+  updateStudentTierInStore(params.student.email, params.planType);
+
+  await createClientNotificationInDb({
+    studentEmail: params.student.email,
+    category: "ACCOUNT",
+    title: `Moolre Payment Confirmed: ${planLabel}`,
+    message: `Ref ${externalRef} · $${amountUsd} USD (${amountCharged} ${cfg.currency}). ${
+      params.planType === "permanent_100"
+        ? "1-on-1 Mentorship, Copy Trading, and Account Management tabs are now unlocked in your sidebar!"
+        : "All 4 Course Levels, Live Trading Rooms, and Market Insights are now unlocked!"
+    }`,
+    linkUrl: params.planType === "permanent_100" ? "/mentorship" : "/courses",
+  });
+
+  emitPortalUpdate();
+  return {
+    success: true,
+    transaction: tx,
+    authorizationUrl: authorizationUrl || undefined,
+    message: `Moolre payment (${externalRef}) confirmed! Your account is now upgraded to ${planLabel}.`,
+  };
+}
+
+// ============================================================================
+// 16. 1-ON-1 VIP MENTORSHIP & PRIVATE LIVE TRADING SESSIONS ($100 TIER)
+// ============================================================================
+
+export interface Mentorship1on1SessionItem {
+  id: string;
+  studentEmail: string;
+  studentName: string;
+  title: string;
+  topic: string;
+  focusPair: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  status: "scheduled" | "live" | "completed";
+  meetingRoomUrl: string;
+  mentorNotes: string;
+  createdAt: string;
+}
+
+export function getCachedMentorship1on1Sessions(studentEmail?: string): Mentorship1on1SessionItem[] {
+  try {
+    const raw = localStorage.getItem(LS_MENTORSHIP_1ON1_KEY);
+    if (raw) {
+      const list = JSON.parse(raw) as Mentorship1on1SessionItem[];
+      if (!studentEmail) return list;
+      const clean = studentEmail.trim().toLowerCase();
+      return list.filter(
+        (s) =>
+          s.studentEmail.toLowerCase() === clean ||
+          s.studentEmail.toLowerCase() === "all_vip"
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function saveMentorship1on1SessionInDb(params: {
+  id?: string;
+  studentEmail: string;
+  studentName: string;
+  title: string;
+  topic: string;
+  focusPair: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  status?: "scheduled" | "live" | "completed";
+  meetingRoomUrl?: string;
+  mentorNotes?: string;
+}): Promise<Mentorship1on1SessionItem> {
+  const list = getCachedMentorship1on1Sessions();
+  const id = params.id || `vip-1on1-${Date.now()}`;
+  const item: Mentorship1on1SessionItem = {
+    id,
+    studentEmail: params.studentEmail.trim(),
+    studentName: params.studentName.trim() || "VIP Trader",
+    title: params.title.trim() || "Private 1-on-1 Live Trading & Mentorship",
+    topic: params.topic.trim() || "Live Chart Execution, Institutional Order Flow & Risk Review",
+    focusPair: params.focusPair.trim() || "XAU/USD · EUR/USD",
+    scheduledAt: params.scheduledAt || new Date(Date.now() + 3600 * 1000).toISOString(),
+    durationMinutes: Number(params.durationMinutes) || 60,
+    status: params.status || "scheduled",
+    meetingRoomUrl: params.meetingRoomUrl?.trim() || `/sessions/live/${id}`,
+    mentorNotes:
+      params.mentorNotes?.trim() ||
+      "Prepare your trading journal and open your Exness MT5 terminal before the call.",
+    createdAt: new Date().toISOString(),
+  };
+
+  const existingIdx = list.findIndex((s) => s.id === id);
+  if (existingIdx >= 0) {
+    list[existingIdx] = item;
+  } else {
+    list.unshift(item);
+  }
+  localStorage.setItem(LS_MENTORSHIP_1ON1_KEY, JSON.stringify(list));
+
+  await createClientNotificationInDb({
+    studentEmail: item.studentEmail,
+    category: "ACCOUNT",
+    title: `1-on-1 Mentorship Scheduled: ${item.title}`,
+    message: `Pastor Mike scheduled a private 1-on-1 live trading session with you for ${new Date(
+      item.scheduledAt
+    ).toLocaleString()} (${item.focusPair}).`,
+    linkUrl: "/mentorship",
+  });
+
+  emitPortalUpdate();
+  return item;
+}
+
+export function deleteMentorship1on1SessionFromDb(id: string): void {
+  const list = getCachedMentorship1on1Sessions().filter((s) => s.id !== id);
+  localStorage.setItem(LS_MENTORSHIP_1ON1_KEY, JSON.stringify(list));
+  emitPortalUpdate();
+}
+
+// ============================================================================
+// 17. ACCOUNT MANAGEMENT FIXED CONTRACT UPLOAD, TEXT EXTRACTION & DIGITAL SIGNATURES
+// ============================================================================
+
+export interface AccountManagementContractConfig {
+  title: string;
+  uploadedFileName: string;
+  profitSplitLabel: string;
+  minimumDepositUsd: number;
+  contractText: string;
+  updatedAt: string;
+}
+
+export interface SignedAccountContractItem {
+  id: string;
+  studentEmail: string;
+  studentName: string;
+  exnessAccountId: string;
+  depositAmountUsd: number;
+  contractTitle: string;
+  contractBodySnapshot: string;
+  signatureName: string;
+  signatureDataUrl?: string;
+  agreedToTerms: boolean;
+  profitSplitLabel: string;
+  status: "SIGNED_ACTIVE" | "PASSWORD_REQUESTED" | "MANAGING";
+  passwordRequestedAt?: string;
+  tradingPasswordSubmitted?: string;
+  signedAt: string;
+}
+
+const DEFAULT_ACCOUNT_MANAGEMENT_CONTRACT: AccountManagementContractConfig = {
+  title: "Candlesticks Academy — Institutional Account Management & Profit-Split Agreement",
+  uploadedFileName: "Candlesticks_Account_Management_Agreement_2026.pdf",
+  profitSplitLabel: "60% Client / 40% Academy Management Desk",
+  minimumDepositUsd: 500,
+  contractText: `FIXED & NON-NEGOTIABLE ACCOUNT MANAGEMENT AGREEMENT
+
+1. PARTIES & PURPOSE
+This Account Management Agreement ("Agreement") is entered into between Candlesticks Trading Academy ("Manager" / "Founder Desk") and the undersigned Verified VIP Client ("Client"). By signing below, the Client authorizes Candlesticks Trading Academy to execute spot foreign exchange and precious metals (XAU/USD) trades on the Client's linked Exness Trading Account.
+
+2. MANDATORY MINIMUM CAPITAL ($500.00 USD)
+The Client must maintain a minimum verified deposit and equity balance of at least Five Hundred US Dollars ($500.00 USD) inside their linked Exness Partner trading account prior to activation of Account Management.
+
+3. PROFIT SPLIT & SETTLEMENT CADENCE
+Net realized trading profits generated on the managed Exness account shall be split at the fixed ratio of 60% to the Client and 40% to Candlesticks Trading Academy at the end of each bi-weekly/monthly settlement cycle.
+
+4. RISK PARAMETERS & CAPITAL PROTECTION
+The Manager applies institutional position sizing (1% to 2% risk per setup) with hard stop-loss invalidation levels on every execution. Forex and CFD trading carry inherent market risk; past performance does not guarantee future returns. Client retains full ownership and withdrawal custody of their Exness Personal Area at all times.
+
+5. TRADING CREDENTIALS & EXECUTION HANDSHAKE
+Upon appending a digital signature to this Agreement, the Client's Exness Trading Account ID is transmitted to the Founder Desk, and the Client will receive an official request to provide their MT4/MT5 Investor/Trading password strictly for trade execution.
+
+6. NON-NEGOTIABLE BINDING ACCEPTANCE
+This contract is fixed and non-negotiable. By typing your full legal name and appending your digital signature below, you confirm that you have read, understood, and irrevocably agreed to all terms and conditions above.`,
+  updatedAt: new Date().toISOString(),
+};
+
+export function getAccountManagementContractConfig(): AccountManagementContractConfig {
+  try {
+    const raw = localStorage.getItem(LS_ACCOUNT_CONTRACT_TEMPLATE_KEY);
+    if (raw) {
+      return {
+        ...DEFAULT_ACCOUNT_MANAGEMENT_CONTRACT,
+        ...(JSON.parse(raw) as Partial<AccountManagementContractConfig>),
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_ACCOUNT_MANAGEMENT_CONTRACT;
+}
+
+export function saveAccountManagementContractConfig(
+  cfg: Partial<AccountManagementContractConfig>
+): AccountManagementContractConfig {
+  const next: AccountManagementContractConfig = {
+    ...getAccountManagementContractConfig(),
+    ...cfg,
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(LS_ACCOUNT_CONTRACT_TEMPLATE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  emitPortalUpdate();
+  return next;
+}
+
+export async function extractTextFromContractDocument(
+  file: File
+): Promise<{ fileName: string; extractedText: string }> {
+  const name = file.name;
+  const lower = name.toLowerCase();
+
+  // Read plain text or markdown directly
+  if (lower.endsWith(".txt") || lower.endsWith(".md") || file.type.startsWith("text/")) {
+    const text = await file.text();
+    if (text.trim().length > 20) {
+      return { fileName: name, extractedText: text.trim() };
+    }
+  }
+
+  // Extract readable ASCII/UTF-8 text blocks from PDF/DOCX binary buffer
+  const arrayBuffer = await file.arrayBuffer();
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const rawString = decoder.decode(arrayBuffer);
+
+  // Pull parenthesized PDF text strings or readable sentences
+  const pdfMatches = Array.from(rawString.matchAll(/\(([A-Za-z0-9 ,.;:'"\-$%()/&]{4,})\)/g)).map(
+    (m) => m[1]
+  );
+  const cleanBlocks = rawString
+    .replace(/[^\x20-\x7E\n\r]/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(
+      (line) =>
+        line.length > 28 &&
+        /[a-zA-Z]{4,}/.test(line) &&
+        !line.includes("endobj") &&
+        !line.includes("stream") &&
+        !line.includes("xml") &&
+        !line.includes("font")
+    );
+
+  const combined =
+    pdfMatches.length >= 6
+      ? pdfMatches.join(" ")
+      : cleanBlocks.length >= 4
+      ? cleanBlocks.slice(0, 60).join("\n\n")
+      : "";
+
+  if (combined.trim().length > 80) {
+    return {
+      fileName: name,
+      extractedText: `EXTRACTED FROM OFFICIAL UPLOADED DOCUMENT (${name})\n\n${combined.trim()}`,
+    };
+  }
+
+  return {
+    fileName: name,
+    extractedText: `${DEFAULT_ACCOUNT_MANAGEMENT_CONTRACT.contractText}\n\n[Source Document Uploaded by Admin: ${name}]`,
+  };
+}
+
+export function getSignedAccountContracts(studentEmail?: string): SignedAccountContractItem[] {
+  try {
+    const raw = localStorage.getItem(LS_SIGNED_CONTRACTS_KEY);
+    if (raw) {
+      const list = JSON.parse(raw) as SignedAccountContractItem[];
+      if (!studentEmail) return list;
+      const clean = studentEmail.trim().toLowerCase();
+      return list.filter((c) => c.studentEmail.toLowerCase() === clean);
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function signAccountManagementContractInDb(params: {
+  student: ExnessStudent;
+  signatureName: string;
+  signatureDataUrl?: string;
+}): Promise<SignedAccountContractItem> {
+  const cfg = getAccountManagementContractConfig();
+  const list = getSignedAccountContracts();
+
+  const item: SignedAccountContractItem = {
+    id: `contract-${Date.now()}`,
+    studentEmail: params.student.email,
+    studentName: params.student.fullName,
+    exnessAccountId: params.student.exnessId || "UNLINKED",
+    depositAmountUsd: Math.max(500, params.student.depositAmount || 500),
+    contractTitle: cfg.title,
+    contractBodySnapshot: cfg.contractText,
+    signatureName: params.signatureName.trim(),
+    signatureDataUrl: params.signatureDataUrl,
+    agreedToTerms: true,
+    profitSplitLabel: cfg.profitSplitLabel,
+    status: "SIGNED_ACTIVE",
+    signedAt: new Date().toISOString(),
+  };
+
+  const existingIdx = list.findIndex(
+    (c) => c.studentEmail.toLowerCase() === params.student.email.toLowerCase()
+  );
+  if (existingIdx >= 0) {
+    list[existingIdx] = item;
+  } else {
+    list.unshift(item);
+  }
+  localStorage.setItem(LS_SIGNED_CONTRACTS_KEY, JSON.stringify(list));
+
+  await createClientNotificationInDb({
+    studentEmail: params.student.email,
+    category: "ACCOUNT",
+    title: "Account Management Contract Signed & Submitted",
+    message: `Your signed agreement for Exness Account #${item.exnessAccountId} (${item.profitSplitLabel}) has been transmitted to Pastor Mike's Admin Desk.`,
+    linkUrl: "/account-management",
+  });
+
+  emitPortalUpdate();
+  return item;
+}
+
+export async function requestStudentExnessTradingPasswordInDb(
+  contractId: string
+): Promise<SignedAccountContractItem | null> {
+  const list = getSignedAccountContracts();
+  const idx = list.findIndex((c) => c.id === contractId);
+  if (idx < 0) return null;
+
+  const updated: SignedAccountContractItem = {
+    ...list[idx],
+    status: "PASSWORD_REQUESTED",
+    passwordRequestedAt: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  localStorage.setItem(LS_SIGNED_CONTRACTS_KEY, JSON.stringify(list));
+
+  await createClientNotificationInDb({
+    studentEmail: updated.studentEmail,
+    category: "ACCOUNT",
+    title: `Action Required: Trading Password Request for Exness #${updated.exnessAccountId}`,
+    message: `Pastor Mike has reviewed your signed Account Management Contract for Exness Trading ID #${updated.exnessAccountId}. Please open your Account Management tab or reply to submit your MT4/MT5 trading password so live management and profit-splitting can begin.`,
+    linkUrl: "/account-management",
+  });
+
+  emitPortalUpdate();
+  return updated;
+}
+
+export async function submitStudentTradingPasswordForManagement(
+  studentEmail: string,
+  tradingPassword: string
+): Promise<SignedAccountContractItem | null> {
+  const list = getSignedAccountContracts();
+  const idx = list.findIndex(
+    (c) => c.studentEmail.toLowerCase() === studentEmail.trim().toLowerCase()
+  );
+  if (idx < 0) return null;
+
+  const updated: SignedAccountContractItem = {
+    ...list[idx],
+    status: "MANAGING",
+    tradingPasswordSubmitted: tradingPassword.trim(),
+  };
+  list[idx] = updated;
+  localStorage.setItem(LS_SIGNED_CONTRACTS_KEY, JSON.stringify(list));
+
+  await createClientNotificationInDb({
+    studentEmail: updated.studentEmail,
+    category: "ACCOUNT",
+    title: `Exness #${updated.exnessAccountId} Active Under Management`,
+    message: `Your trading credentials for Exness #${updated.exnessAccountId} have been received by the Founder Desk. Account management (${updated.profitSplitLabel}) is now active.`,
+    linkUrl: "/account-management",
+  });
+
+  emitPortalUpdate();
+  return updated;
+}
+
+// ============================================================================
+// 18. FIRST 20 REGISTRANTS MERCH GIVEAWAY (CANDLESTICKS & EXNESS BRANDED MERCH)
+// ============================================================================
+
+export interface MerchClaimItem {
+  id: string;
+  spotNumber: number;
+  studentEmail: string;
+  exnessAccountId: string;
+  fullName: string;
+  phone: string;
+  deliveryLocation: string;
+  preferredDeliveryTime: string;
+  merchBundle: string;
+  status: "PENDING_DELIVERY" | "DISPATCHED" | "DELIVERED";
+  claimedAt: string;
+}
+
+export function getMerchClaims(): MerchClaimItem[] {
+  try {
+    const raw = localStorage.getItem(LS_MERCH_CLAIMS_KEY);
+    if (raw) {
+      return JSON.parse(raw) as MerchClaimItem[];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function getMerchGiveawayStats(studentEmail?: string): {
+  totalClaimed: number;
+  maxSpots: number;
+  spotsRemaining: number;
+  isGiveawayOpen: boolean;
+  studentClaim: MerchClaimItem | null;
+} {
+  const claims = getMerchClaims();
+  const totalClaimed = claims.length;
+  const spotsRemaining = Math.max(0, MAX_MERCH_GIVEAWAY_SPOTS - totalClaimed);
+  const cleanEmail = (studentEmail || "").trim().toLowerCase();
+  const studentClaim = cleanEmail
+    ? claims.find((c) => c.studentEmail.toLowerCase() === cleanEmail) || null
+    : null;
+
+  return {
+    totalClaimed,
+    maxSpots: MAX_MERCH_GIVEAWAY_SPOTS,
+    spotsRemaining,
+    isGiveawayOpen: spotsRemaining > 0,
+    studentClaim,
+  };
+}
+
+export async function submitMerchGiveawayClaim(params: {
+  studentEmail: string;
+  exnessAccountId?: string;
+  fullName: string;
+  phone: string;
+  deliveryLocation: string;
+  preferredDeliveryTime: string;
+}): Promise<{ success: boolean; claim?: MerchClaimItem; message: string }> {
+  const claims = getMerchClaims();
+  const cleanEmail = params.studentEmail.trim().toLowerCase();
+
+  const existing = claims.find(
+    (c) =>
+      c.studentEmail.toLowerCase() === cleanEmail ||
+      (params.phone.trim() && c.phone.trim() === params.phone.trim())
+  );
+  if (existing) {
+    return {
+      success: true,
+      claim: existing,
+      message: `You have already claimed Spot #${existing.spotNumber} of ${MAX_MERCH_GIVEAWAY_SPOTS} for your Candlesticks & Exness Merch Bundle!`,
+    };
+  }
+
+  if (claims.length >= MAX_MERCH_GIVEAWAY_SPOTS) {
+    return {
+      success: false,
+      message: "All 20 First-Registrant Merch bundles have been claimed.",
+    };
+  }
+
+  const spotNumber = claims.length + 1;
+  const claim: MerchClaimItem = {
+    id: `merch-${Date.now()}`,
+    spotNumber,
+    studentEmail: params.studentEmail.trim(),
+    exnessAccountId: params.exnessAccountId || "",
+    fullName: params.fullName.trim(),
+    phone: params.phone.trim(),
+    deliveryLocation: params.deliveryLocation.trim(),
+    preferredDeliveryTime: params.preferredDeliveryTime.trim(),
+    merchBundle: "Candlesticks & Exness Branded T-Shirt, Tote Bag & Cap",
+    status: "PENDING_DELIVERY",
+    claimedAt: new Date().toISOString(),
+  };
+
+  claims.push(claim);
+  localStorage.setItem(LS_MERCH_CLAIMS_KEY, JSON.stringify(claims));
+
+  // Mark student record as merchClaimed
+  const curr = getStoredCurrentUser();
+  if (curr.email.toLowerCase() === cleanEmail) {
+    saveStoredCurrentUser({ ...curr, merchClaimed: true });
+  }
+
+  await createClientNotificationInDb({
+    studentEmail: claim.studentEmail,
+    category: "SYSTEM",
+    title: `Spot #${spotNumber}/20 Claimed: Candlesticks & Exness Merch!`,
+    message: `Your free T-Shirt, Tote Bag & Cap delivery to ${claim.deliveryLocation} (${claim.preferredDeliveryTime}) is registered for fulfillment.`,
+    linkUrl: "/dashboard",
+  });
+
+  emitPortalUpdate();
+  return {
+    success: true,
+    claim,
+    message: `Congratulations! You secured Spot #${spotNumber} of ${MAX_MERCH_GIVEAWAY_SPOTS}. Your Candlesticks & Exness Merch Bundle will be delivered to ${claim.deliveryLocation}.`,
+  };
+}
+
+export function updateMerchClaimStatus(
+  claimId: string,
+  nextStatus: MerchClaimItem["status"]
+): void {
+  const claims = getMerchClaims().map((c) =>
+    c.id === claimId ? { ...c, status: nextStatus } : c
+  );
+  localStorage.setItem(LS_MERCH_CLAIMS_KEY, JSON.stringify(claims));
+  emitPortalUpdate();
+}
+

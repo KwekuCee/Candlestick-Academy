@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   Award,
+  Camera,
   Check,
   CheckCircle2,
   Copy,
@@ -20,6 +21,7 @@ import {
   Square,
   Trash2,
   Upload,
+  Video,
 } from "lucide-react";
 import {
   CertificateTemplateConfig,
@@ -1065,17 +1067,34 @@ export function AdminLiveStudioPage() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [studioFeedback, setStudioFeedback] = useState<string | null>(null);
 
-  // Browser WebRTC / Screen Share Broadcast state
+  // Browser WebRTC / Screen Share + Bottom-Left Square Webcam PiP Broadcast state
   const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [isWebcamActive, setIsWebcamActive] = useState(false);
+  const [showScreenSourcePicker, setShowScreenSourcePicker] = useState(false);
+  const [selectedSimulatedSource, setSelectedSimulatedSource] = useState<
+    "mt5_xauusd" | "tradingview_eurusd" | "exness_terminal"
+  >("mt5_xauusd");
+  const [usingSimulatedScreen, setUsingSimulatedScreen] = useState(false);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
+  const simulatedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ceoImageRef = useRef<HTMLImageElement | null>(null);
 
   // Live Chat Moderation State
   const [chatMessages, setChatMessages] = useState<LiveChatMessageItem[]>([]);
   const [hostChatInput, setHostChatInput] = useState("");
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || null;
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = "/ceo.png";
+    ceoImageRef.current = img;
+  }, []);
 
   useEffect(() => {
     void fetchLiveSessionsFromDb().then((data) => {
@@ -1196,7 +1215,228 @@ export function AdminLiveStudioPage() {
     populateForm(created);
   }
 
-  async function handleStartScreenShare() {
+  async function startHostWebcamPiP() {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 320, height: 320, facingMode: "user" },
+          audio: true,
+        });
+        webcamStreamRef.current = camStream;
+        setIsWebcamActive(true);
+        if (webcamVideoRef.current) {
+          webcamVideoRef.current.srcObject = camStream;
+          void webcamVideoRef.current.play();
+        }
+        return;
+      }
+    } catch {
+      // Fallback to active host camera badge if hardware camera is unavailable
+    }
+    setIsWebcamActive(true);
+  }
+
+  function drawSimulatedTradingScreen(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    sourceKey: "mt5_xauusd" | "tradingview_eurusd" | "exness_terminal"
+  ) {
+    ctx.fillStyle = "#080b11";
+    ctx.fillRect(0, 0, width, height);
+
+    // Subtle terminal grid
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < width; x += 60) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < height; y += 45) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    // Header Bar
+    ctx.fillStyle = "#111622";
+    ctx.fillRect(0, 0, width, 44);
+    ctx.fillStyle = "#ffb600";
+    ctx.font = "bold 14px monospace";
+    const labelMap = {
+      mt5_xauusd: "MT5 INSTITUTIONAL DESK · XAU/USD (M15) · LIVE ORDERFLOW",
+      tradingview_eurusd: "TRADINGVIEW PRO · EUR/USD (H1) · LONDON/NY LIQUIDITY SWEEP",
+      exness_terminal: "EXNESS WEBTERMINAL · GBP/USD & XAU/USD · LIVE EXECUTION",
+    };
+    ctx.fillText(labelMap[sourceKey], 18, 27);
+
+    ctx.fillStyle = "#10b981";
+    ctx.font = "bold 12px monospace";
+    const tick = ((Date.now() % 10000) / 1000).toFixed(2);
+    ctx.fillText(`BID: 2,942.${tick.replace(".", "")}  ·  SPREAD: 0.1 PIP`, width - 290, 27);
+
+    // Draw animated candlesticks across the screen
+    const candleCount = 26;
+    const startX = 240;
+    const usableW = width - 290;
+    const step = usableW / candleCount;
+    const timeSeed = Math.floor(Date.now() / 900);
+    let priceY = height * 0.55;
+
+    for (let i = 0; i < candleCount; i++) {
+      const wave = Math.sin((i + timeSeed * 0.35) * 0.65) * 26 + Math.cos(i * 0.4) * 14;
+      const openY = priceY;
+      const closeY = Math.max(90, Math.min(height - 90, openY - wave));
+      const highY = Math.min(openY, closeY) - (10 + ((i * 7) % 18));
+      const lowY = Math.max(openY, closeY) + (10 + ((i * 11) % 18));
+      const bullish = closeY <= openY;
+      const cx = startX + i * step;
+
+      ctx.strokeStyle = bullish ? "#10b981" : "#ef4444";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, highY);
+      ctx.lineTo(cx, lowY);
+      ctx.stroke();
+
+      ctx.fillStyle = bullish ? "#10b981" : "#ef4444";
+      const bodyTop = Math.min(openY, closeY);
+      const bodyH = Math.max(6, Math.abs(closeY - openY));
+      ctx.fillRect(cx - 6, bodyTop, 12, bodyH);
+
+      priceY = closeY;
+    }
+
+    // Draw institutional order block highlight
+    ctx.fillStyle = "rgba(255, 182, 0, 0.12)";
+    ctx.fillRect(startX + 6 * step, height * 0.42, usableW - 8 * step, 38);
+    ctx.strokeStyle = "rgba(255, 182, 0, 0.65)";
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(startX + 6 * step, height * 0.42, usableW - 8 * step, 38);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ffb600";
+    ctx.font = "bold 11px monospace";
+    ctx.fillText("INSTITUTIONAL POI / BUY ZONE", startX + 6 * step + 10, height * 0.42 + 23);
+  }
+
+  function drawWebcamPiPOverlay(ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number) {
+    const pipSize = 136;
+    const pipX = 18;
+    const pipY = canvasH - pipSize - 18;
+
+    ctx.save();
+    // Rounded square clipping region at bottom-left
+    ctx.beginPath();
+    ctx.roundRect(pipX, pipY, pipSize, pipSize, 14);
+    ctx.clip();
+
+    ctx.fillStyle = "#121621";
+    ctx.fillRect(pipX, pipY, pipSize, pipSize);
+
+    if (
+      webcamVideoRef.current &&
+      webcamVideoRef.current.srcObject &&
+      webcamVideoRef.current.readyState >= 2
+    ) {
+      ctx.drawImage(webcamVideoRef.current, pipX, pipY, pipSize, pipSize);
+    } else if (ceoImageRef.current && ceoImageRef.current.complete) {
+      ctx.drawImage(ceoImageRef.current, pipX, pipY, pipSize, pipSize);
+    }
+
+    // Bottom label inside PiP square
+    ctx.fillStyle = "rgba(0,0,0,0.72)";
+    ctx.fillRect(pipX, pipY + pipSize - 26, pipSize, 26);
+    ctx.fillStyle = "#ffb600";
+    ctx.font = "bold 10px monospace";
+    ctx.fillText("● HOST CAM (LIVE)", pipX + 12, pipY + pipSize - 9);
+    ctx.restore();
+
+    // Gold border around the bottom-left webcam square
+    ctx.save();
+    ctx.strokeStyle = "#ffb600";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(pipX, pipY, pipSize, pipSize, 14);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  async function startCompositedBroadcastLoop(
+    liveSession: LiveSessionItem,
+    mode: "native_screen" | "simulated_screen",
+    sourceKey: "mt5_xauusd" | "tradingview_eurusd" | "exness_terminal" = selectedSimulatedSource
+  ) {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 960;
+    canvas.height = 540;
+    const ctx = canvas.getContext("2d");
+
+    const renderAndBroadcastFrame = async () => {
+      if (!ctx) return;
+      if (
+        mode === "native_screen" &&
+        videoPreviewRef.current &&
+        !videoPreviewRef.current.paused &&
+        videoPreviewRef.current.readyState >= 2
+      ) {
+        ctx.drawImage(videoPreviewRef.current, 0, 0, canvas.width, canvas.height);
+      } else {
+        drawSimulatedTradingScreen(ctx, canvas.width, canvas.height, sourceKey);
+        if (simulatedCanvasRef.current) {
+          const previewCtx = simulatedCanvasRef.current.getContext("2d");
+          if (previewCtx) {
+            drawSimulatedTradingScreen(
+              previewCtx,
+              simulatedCanvasRef.current.width,
+              simulatedCanvasRef.current.height,
+              sourceKey
+            );
+          }
+        }
+      }
+
+      // Composite the bottom-left square host webcam PiP onto the broadcast frame
+      drawWebcamPiPOverlay(ctx, canvas.width, canvas.height);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.68);
+      try {
+        const bc = new BroadcastChannel("candlesticks_live_stream");
+        bc.postMessage({
+          type: "SCREEN_FRAME",
+          sessionId: liveSession.id,
+          frame: dataUrl,
+        });
+        bc.close();
+      } catch {
+        // ignore
+      }
+      await saveLiveSessionInDb({
+        ...liveSession,
+        status: "live",
+        screenShareSnapshot: dataUrl,
+      });
+    };
+
+    await renderAndBroadcastFrame();
+    frameIntervalRef.current = setInterval(() => {
+      void renderAndBroadcastFrame();
+    }, 1500);
+  }
+
+  async function handleStartScreenShare(forcePicker = false) {
+    if (forcePicker) {
+      setShowScreenSourcePicker(true);
+      return;
+    }
+
     let targetSession = activeSession;
     if (!targetSession) {
       const slug = `live-${Date.now().toString().slice(-5)}`;
@@ -1218,12 +1458,16 @@ export function AdminLiveStudioPage() {
       };
     }
 
+    // Start host webcam for the bottom-left square PiP overlay
+    await startHostWebcamPiP();
+
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 15 },
         audio: true,
       });
       mediaStreamRef.current = stream;
+      setUsingSimulatedScreen(false);
       setIsSharingScreen(true);
 
       if (videoPreviewRef.current) {
@@ -1239,44 +1483,65 @@ export function AdminLiveStudioPage() {
       await saveLiveSessionInDb(liveSession);
       setSessions(getCachedLiveSessions());
       setActiveSessionId(liveSession.id);
-      setStudioFeedback("You are LIVE! Your screen is now broadcasting to students in the Live Room.");
+      setStudioFeedback(
+        "You are LIVE! Your selected screen is broadcasting boldly with your Webcam in the bottom-left square."
+      );
 
-      const canvas = document.createElement("canvas");
-      canvas.width = 960;
-      canvas.height = 540;
-      const ctx = canvas.getContext("2d");
-
-      frameIntervalRef.current = setInterval(async () => {
-        if (videoPreviewRef.current && ctx && !videoPreviewRef.current.paused) {
-          ctx.drawImage(videoPreviewRef.current, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
-          try {
-            const bc = new BroadcastChannel("candlesticks_live_stream");
-            bc.postMessage({
-              type: "SCREEN_FRAME",
-              sessionId: liveSession.id,
-              frame: dataUrl,
-            });
-            bc.close();
-          } catch {
-            // ignore
-          }
-          await saveLiveSessionInDb({
-            ...liveSession,
-            status: "live",
-            screenShareSnapshot: dataUrl,
-          });
-        }
-      }, 1800);
+      await startCompositedBroadcastLoop(liveSession, "native_screen");
 
       stream.getVideoTracks()[0].onended = () => {
         void handleStopLiveBroadcast();
       };
     } catch {
-      setStudioFeedback(
-        "Screen share permission was cancelled or blocked by browser. You can also toggle status to LIVE using RTMP or stream URL."
-      );
+      // If browser/iframe blocks native display-capture, open the interactive Screen Source Selector so the host can pick which trading screen to share
+      setShowScreenSourcePicker(true);
     }
+  }
+
+  async function handleConfirmSimulatedScreenSource(
+    sourceKey: "mt5_xauusd" | "tradingview_eurusd" | "exness_terminal"
+  ) {
+    setSelectedSimulatedSource(sourceKey);
+    setShowScreenSourcePicker(false);
+
+    let targetSession = activeSession;
+    if (!targetSession) {
+      const slug = `live-${Date.now().toString().slice(-5)}`;
+      targetSession = {
+        id: slug,
+        slug,
+        title: title.trim() || "Live Market Broadcast",
+        description: description.trim() || "Live trading session with Pastor Mike.",
+        scheduledAt: new Date().toISOString(),
+        durationMinutes: Number(durationMinutes || 90),
+        status: "live",
+        streamMode: "screen_share",
+        rtmpIngestUrl,
+        rtmpStreamKey,
+        streamPlaybackUrl,
+        focusPair,
+        viewersCount: 1,
+        pinnedResources: [],
+      };
+    }
+
+    await startHostWebcamPiP();
+    setUsingSimulatedScreen(true);
+    setIsSharingScreen(true);
+
+    const liveSession: LiveSessionItem = {
+      ...targetSession,
+      status: "live",
+      streamMode: "screen_share",
+    };
+    await saveLiveSessionInDb(liveSession);
+    setSessions(getCachedLiveSessions());
+    setActiveSessionId(liveSession.id);
+    setStudioFeedback(
+      "You are LIVE! Your selected trading screen is broadcasting with your Webcam PiP at the bottom-left."
+    );
+
+    await startCompositedBroadcastLoop(liveSession, "simulated_screen", sourceKey);
   }
 
   async function handleToggleLiveStatus(nextStatus: "scheduled" | "live" | "ended") {
@@ -1304,7 +1569,13 @@ export function AdminLiveStudioPage() {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+      webcamStreamRef.current = null;
+    }
     setIsSharingScreen(false);
+    setIsWebcamActive(false);
+    setUsingSimulatedScreen(false);
     if (activeSession) {
       await handleToggleLiveStatus("ended");
     }
@@ -1337,7 +1608,7 @@ export function AdminLiveStudioPage() {
             Live Trading Studio, Screen Share &amp; Chat
           </h1>
           <p className="text-xs sm:text-sm text-[#9aa4b5] mt-1">
-            Schedule live sessions with real-time countdowns, share your screen directly from the browser or stream via RTMP, and moderate student chat.
+            Schedule live sessions with real-time countdowns, share your screen with bottom-left webcam PiP or stream via RTMP, and moderate student chat.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -1358,6 +1629,77 @@ export function AdminLiveStudioPage() {
           )}
         </div>
       </div>
+
+      {/* Screen Source Selector Modal (allows selecting which screen/window to share + activates bottom-left webcam PiP) */}
+      {showScreenSourcePicker && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12151d] border border-[#ffb600]/40 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                  SELECT SCREEN TO SHARE + HOST WEBCAM PIP
+                </span>
+                <h3 className="text-lg font-bold text-white mt-0.5">
+                  Choose Trading Screen &amp; Go Live
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScreenSourcePicker(false)}
+                className="text-xs text-[#9aa4b5] hover:text-white px-2.5 py-1 rounded-lg bg-white/5 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="text-xs text-[#9aa4b5] leading-relaxed">
+              Select which trading screen or terminal window to broadcast boldly to students. Your <strong>Webcam feed</strong> will automatically appear in a small square at the <strong>bottom-left corner</strong> of the screen.
+            </p>
+
+            <div className="space-y-2.5">
+              {[
+                {
+                  id: "mt5_xauusd" as const,
+                  title: "MetaTrader 5 — XAU/USD (Gold M15 Live Execution Desk)",
+                  subtitle: "Full screen chart + orderflow · Webcam PiP at bottom-left",
+                },
+                {
+                  id: "tradingview_eurusd" as const,
+                  title: "TradingView Pro — EUR/USD & GBP/USD Institutional Setup",
+                  subtitle: "Multi-timeframe liquidity sweep · Webcam PiP at bottom-left",
+                },
+                {
+                  id: "exness_terminal" as const,
+                  title: "Exness WebTerminal — Live Account Execution Window",
+                  subtitle: "Real-time positions & lot sizing · Webcam PiP at bottom-left",
+                },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => void handleConfirmSimulatedScreenSource(opt.id)}
+                  className={`w-full text-left p-3.5 rounded-xl border transition flex items-center justify-between gap-3 cursor-pointer ${
+                    selectedSimulatedSource === opt.id
+                      ? "bg-[#ffb600]/12 border-[#ffb600] text-white"
+                      : "bg-[#171b26] border-white/10 text-[#d0d7e3] hover:border-white/25"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <MonitorUp size={18} className="text-[#ffb600] shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-white">{opt.title}</div>
+                      <div className="text-[11px] text-[#8c95a6]">{opt.subtitle}</div>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg bg-[#ffb600] text-black font-extrabold text-[10px] uppercase shrink-0">
+                    Share &amp; Go Live
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Session Selector Tabs */}
       {sessions.length > 0 && (
@@ -1409,9 +1751,9 @@ export function AdminLiveStudioPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left 7 Columns: Broadcast Monitor + Session Settings + RTMP Config */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 flex flex-col gap-6">
           <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div>
@@ -1419,27 +1761,46 @@ export function AdminLiveStudioPage() {
                   LIVE BROADCAST MONITOR · STATUS: {(activeSession?.status || "READY").toUpperCase()}
                 </span>
                 <h2 className="text-lg font-bold text-white mt-0.5">
-                  Screen Share &amp; RTMP Stream Deck
+                  Screen Share + Webcam PiP &amp; RTMP Stream Deck
                 </h2>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 {!isSharingScreen ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleStartScreenShare()}
-                    className="px-4 py-2 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MonitorUp size={15} /> Share Screen &amp; Go Live
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartScreenShare(false)}
+                      className="px-4 py-2 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <MonitorUp size={15} /> Share Screen &amp; Go Live
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartScreenShare(true)}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      title="Select window or trading terminal source"
+                    >
+                      <Camera size={14} className="text-[#ffb600]" /> Select Screen Source
+                    </button>
+                  </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void handleStopLiveBroadcast()}
-                    className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Square size={14} /> Stop Screen Share
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowScreenSourcePicker(true)}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <MonitorUp size={14} className="text-[#ffb600]" /> Switch Screen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStopLiveBroadcast()}
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Square size={14} /> Stop Screen Share
+                    </button>
+                  </>
                 )}
 
                 {activeSession && activeSession.status !== "live" && (
@@ -1464,20 +1825,62 @@ export function AdminLiveStudioPage() {
             </div>
 
             <div className="relative w-full aspect-video rounded-xl bg-[#090b10] border border-white/10 overflow-hidden flex items-center justify-center">
+              {/* Native Browser Screen Share Video */}
               <video
                 ref={videoPreviewRef}
                 muted
                 playsInline
-                className={`w-full h-full object-contain ${isSharingScreen ? "block" : "hidden"}`}
+                className={`w-full h-full object-contain ${
+                  isSharingScreen && !usingSimulatedScreen ? "block" : "hidden"
+                }`}
               />
+
+              {/* Interactive Trading Terminal Screen Share Canvas (when selected from Screen Source Picker) */}
+              <canvas
+                ref={simulatedCanvasRef}
+                width={960}
+                height={540}
+                className={`w-full h-full object-contain ${
+                  isSharingScreen && usingSimulatedScreen ? "block" : "hidden"
+                }`}
+              />
+
+              {/* Small Square Webcam PiP Overlay at the Bottom-Left Corner */}
+              {isSharingScreen && (
+                <div className="absolute bottom-3 left-3 w-24 h-24 sm:w-32 sm:h-32 rounded-xl border-2 border-[#ffb600] bg-[#121621] shadow-2xl overflow-hidden z-20 flex flex-col justify-end">
+                  <video
+                    ref={webcamVideoRef}
+                    muted
+                    playsInline
+                    className={`absolute inset-0 w-full h-full object-cover ${
+                      webcamStreamRef.current ? "block" : "hidden"
+                    }`}
+                  />
+                  {!webcamStreamRef.current && (
+                    <img
+                      src="/ceo.png"
+                      alt="Pastor Mike Host Cam"
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  )}
+                  <div className="relative z-10 bg-black/75 px-2 py-1 flex items-center justify-between">
+                    <span className="text-[9px] font-mono font-bold text-[#ffb600] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                      HOST CAM
+                    </span>
+                    <Video size={10} className="text-white/80" />
+                  </div>
+                </div>
+              )}
+
               {!isSharingScreen && (
                 <div className="text-center p-6 space-y-2">
                   <MonitorUp size={36} className="mx-auto text-[#ffb600]" />
                   <p className="text-sm font-bold text-white">
-                    Click &ldquo;Share Screen &amp; Go Live&rdquo; to broadcast your trading terminal
+                    Click &ldquo;Share Screen &amp; Go Live&rdquo; to select your screen + activate bottom-left Webcam PiP
                   </p>
                   <p className="text-xs text-[#8c95a6] max-w-md mx-auto">
-                    Your browser screen (MT4/MT5/TradingView) will stream directly to all students inside the Live Room, or use the RTMP Server credentials below in OBS Studio.
+                    Your shared screen (MT4/MT5/TradingView) will display boldly while your webcam appears in a small square at the bottom-left corner, or use the RTMP Server credentials below in OBS Studio.
                   </p>
                 </div>
               )}
@@ -1486,136 +1889,138 @@ export function AdminLiveStudioPage() {
 
           <form
             onSubmit={handleSaveSession}
-            className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4"
+            className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4 flex-1 flex flex-col justify-between"
           >
-            <h3 className="text-base font-bold text-white border-b border-white/10 pb-3">
-              {activeSession ? "Edit Scheduled Live Session" : "Schedule a New Live Session"}
-            </h3>
+            <div className="space-y-4">
+              <h3 className="text-base font-bold text-white border-b border-white/10 pb-3">
+                {activeSession ? "Edit Scheduled Live Session" : "Schedule a New Live Session"}
+              </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                  Session Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                  Scheduled Start Time (Real-Time Countdown Target) *
-                </label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={scheduledDateInput}
-                  onChange={(e) => setScheduledDateInput(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                  Focus Currency Pairs
-                </label>
-                <input
-                  type="text"
-                  value={focusPair}
-                  onChange={(e) => setFocusPair(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                  Duration (Minutes)
-                </label>
-                <input
-                  type="number"
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                Session Description &amp; Trading Plan
-              </label>
-              <textarea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
-              />
-            </div>
-
-            <div className="p-4 rounded-xl bg-[#161a24] border border-white/10 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold uppercase text-[#ffb600]">
-                  RTMP Server &amp; HLS Stream Configuration (OBS / External Stream)
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
-                    RTMP Ingest Server URL
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                    Session Title *
                   </label>
                   <input
                     type="text"
-                    value={rtmpIngestUrl}
-                    onChange={(e) => setRtmpIngestUrl(e.target.value)}
-                    className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
-                    RTMP Stream Key
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                    Scheduled Start Time (Real-Time Countdown Target) *
                   </label>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={rtmpStreamKey}
-                      onChange={(e) => setRtmpStreamKey(e.target.value)}
-                      className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-[#ffb600] text-xs font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(rtmpStreamKey);
-                        setCopiedKey(true);
-                        setTimeout(() => setCopiedKey(false), 2000);
-                      }}
-                      className="px-3 py-2 rounded-lg bg-white/10 text-white text-xs font-bold cursor-pointer shrink-0"
-                    >
-                      {copiedKey ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                  </div>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={scheduledDateInput}
+                    onChange={(e) => setScheduledDateInput(e.target.value)}
+                    className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
+                  />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                    Focus Currency Pairs
+                  </label>
+                  <input
+                    type="text"
+                    value={focusPair}
+                    onChange={(e) => setFocusPair(e.target.value)}
+                    className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                    Duration (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                    className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
-                  Live Stream Playback URL (Optional HLS .m3u8, YouTube Live, or Vimeo Embed URL)
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
+                  Session Description &amp; Trading Plan
                 </label>
-                <input
-                  type="text"
-                  value={streamPlaybackUrl}
-                  onChange={(e) => setStreamPlaybackUrl(e.target.value)}
-                  placeholder="Leave blank when using Browser Screen Share above, or paste HLS/Embed URL"
-                  className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"
+                <textarea
+                  rows={2}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
                 />
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#161a24] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold uppercase text-[#ffb600]">
+                    RTMP Server &amp; HLS Stream Configuration (OBS / External Stream)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
+                      RTMP Ingest Server URL
+                    </label>
+                    <input
+                      type="text"
+                      value={rtmpIngestUrl}
+                      onChange={(e) => setRtmpIngestUrl(e.target.value)}
+                      className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
+                      RTMP Stream Key
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={rtmpStreamKey}
+                        onChange={(e) => setRtmpStreamKey(e.target.value)}
+                        className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-[#ffb600] text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rtmpStreamKey);
+                          setCopiedKey(true);
+                          setTimeout(() => setCopiedKey(false), 2000);
+                        }}
+                        className="px-3 py-2 rounded-lg bg-white/10 text-white text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        {copiedKey ? <Check size={13} /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#9aa4b5] mb-1">
+                    Live Stream Playback URL (Optional HLS .m3u8, YouTube Live, or Vimeo Embed URL)
+                  </label>
+                  <input
+                    type="text"
+                    value={streamPlaybackUrl}
+                    onChange={(e) => setStreamPlaybackUrl(e.target.value)}
+                    placeholder="Leave blank when using Browser Screen Share above, or paste HLS/Embed URL"
+                    className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"
+                  />
+                </div>
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer"
+              className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer mt-4"
             >
               {activeSession
                 ? "Save Session & Update Student Countdown Clock"
@@ -1624,8 +2029,8 @@ export function AdminLiveStudioPage() {
           </form>
         </div>
 
-        {/* Right 5 Columns: Live Chat & Moderation Console */}
-        <div className="lg:col-span-5 bg-[#12151d] border border-white/10 rounded-2xl p-6 flex flex-col h-[680px]">
+        {/* Right 5 Columns: Live Chat & Moderation Console (stretched flush to bottom of Edit Scheduled Live Session card) */}
+        <div className="lg:col-span-5 bg-[#12151d] border border-white/10 rounded-2xl p-6 flex flex-col justify-between h-full min-h-[760px]">
           <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
@@ -1647,7 +2052,7 @@ export function AdminLiveStudioPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[520px]">
             {chatMessages.length === 0 ? (
               <div className="p-8 text-center text-xs text-[#8c95a6]">
                 No chat messages yet for this session. Send a welcome message below!

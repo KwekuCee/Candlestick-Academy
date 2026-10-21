@@ -39,8 +39,14 @@ import {
   TrendingUp,
   UserCheck,
   Wallet,
+  Gift,
+  MapPin,
+  Phone,
+  Clock,
+  X,
 } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
+import { getMerchGiveawayStats, submitMerchGiveawayClaim } from "./portalDataStore";
 
 // Signature Trading Candlestick Icon
 function CandlestickGlyph({ size = 20, className = "" }: { size?: number; className?: string }) {
@@ -157,6 +163,19 @@ export function OnboardingFlow() {
   const [depositChecking, setDepositChecking] = useState(false);
   const [currentDeposit, setCurrentDeposit] = useState(0);
   const [depositFeedback, setDepositFeedback] = useState<string | null>(null);
+
+  // Post-Registration Popup Modal: First 20 Registrants Candlesticks & Exness Merch Giveaway
+  const [showMerchPopup, setShowMerchPopup] = useState(false);
+  const [merchFullName, setMerchFullName] = useState("");
+  const [merchPhone, setMerchPhone] = useState("");
+  const [merchLocation, setMerchLocation] = useState("");
+  const [merchPreferredTime, setMerchPreferredTime] = useState("Morning (9:00 AM - 12:00 PM)");
+  const [merchSubmitting, setMerchSubmitting] = useState(false);
+  const [merchResult, setMerchResult] = useState<{
+    success: boolean;
+    message: string;
+    spotNumber?: number;
+  } | null>(null);
 
   useEffect(() => {
     void refreshRosterFromSupabase();
@@ -360,6 +379,7 @@ export function OnboardingFlow() {
 
     const user = getStoredCurrentUser();
     const isFunded = currentDeposit >= 50;
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const updatedUser: ExnessStudent = {
       ...user,
       id: matchedDbStudent?.id || `std-${Date.now()}`,
@@ -380,6 +400,8 @@ export function OnboardingFlow() {
       depositVerifiedAt: isFunded ? new Date().toISOString() : undefined,
       ticketStatus: showTicketHelper ? "submitted" : "verified",
       registrationDate: matchedDbStudent?.registrationDate || new Date().toISOString(),
+      subscriptionTier: matchedDbStudent?.subscriptionTier || "free_trial",
+      trialEndsAt: matchedDbStudent?.trialEndsAt || trialEndsAt,
     };
 
     saveStoredCurrentUser(updatedUser, password);
@@ -398,8 +420,31 @@ export function OnboardingFlow() {
     }
     saveStoredRoster(roster);
 
+    // Pre-fill and trigger the Post-Registration First 20 Registrants Merch Giveaway Popup Modal
+    setMerchFullName(updatedUser.fullName);
+    setShowMerchPopup(true);
+
     setStep(3);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleClaimMerchGiveaway(e: FormEvent) {
+    e.preventDefault();
+    setMerchSubmitting(true);
+    const res = await submitMerchGiveawayClaim({
+      studentEmail: email.trim(),
+      fullName: merchFullName.trim() || fullName.trim(),
+      contactNumber: merchPhone.trim(),
+      deliveryLocation: merchLocation.trim(),
+      preferredDeliveryTime: merchPreferredTime,
+      exnessId: exnessIdInput.trim(),
+    });
+    setMerchSubmitting(false);
+    setMerchResult({
+      success: res.success,
+      message: res.message,
+      spotNumber: res.claim?.spotNumber,
+    });
   }
 
   // Step 3: Deposit Check
@@ -1419,6 +1464,153 @@ export function OnboardingFlow() {
                 <span style={{ color: "#0b0d0f" }}>Enter Student Dashboard</span>
                 <ArrowRight size={17} color="#0b0d0f" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* POST-REGISTRATION POPUP MODAL: First 20 Registrants Candlesticks & Exness Merch Giveaway */}
+        {showMerchPopup && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-[#12151d] border-2 border-[#ffb600] rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-[0_25px_70px_rgba(0,0,0,0.85)] relative overflow-hidden">
+              <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] flex items-center justify-center shrink-0">
+                    <Gift size={24} />
+                  </div>
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-[#ffb600]/15 text-[#ffb600] border border-[#ffb600]/30">
+                      FIRST 20 REGISTRANTS GIVEAWAY · {getMerchGiveawayStats().remainingCount} SPOTS LEFT
+                    </span>
+                    <h2 className="text-lg sm:text-xl font-bold text-white mt-1">
+                      Claim Your Candlesticks &amp; Exness Merch!
+                    </h2>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMerchPopup(false)}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#9aa4b5] hover:text-white cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#171b25] border border-white/10 text-xs text-[#cfd7e6] space-y-1.5">
+                <p className="font-bold text-[#ffb600]">
+                  🎁 Free Official Merch Pack for the First 20 Registrants:
+                </p>
+                <p className="text-[#9aa4b5] leading-relaxed">
+                  Congratulations on registering! As one of our first 20 verified traders, you qualify for our branded <strong>Candlesticks &amp; Exness T-Shirt, Tote Bag, and Cap</strong>—plus your <strong>1-Month Free Full Academy Trial</strong> is now active.
+                </p>
+              </div>
+
+              {merchResult ? (
+                <div className="space-y-4">
+                  <div
+                    className={`p-4 rounded-xl border text-xs flex items-start gap-2.5 ${
+                      merchResult.success
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                        : "bg-red-500/10 border-red-500/30 text-red-300"
+                    }`}
+                  >
+                    <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-[#ffb600]" />
+                    <div>
+                      <strong className="block text-white mb-0.5">
+                        {merchResult.spotNumber
+                          ? `Merch Spot #${merchResult.spotNumber} of 20 Reserved!`
+                          : "Merch Giveaway Update"}
+                      </strong>
+                      <span>{merchResult.message}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMerchPopup(false)}
+                    className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+                  >
+                    Continue to My Academy Account →
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleClaimMerchGiveaway} className="space-y-3.5">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={merchFullName}
+                      onChange={(e) => setMerchFullName(e.target.value)}
+                      placeholder="Your full name for delivery"
+                      className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1 flex items-center gap-1.5">
+                      <Phone size={12} className="text-[#ffb600]" /> Contact Number *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={merchPhone}
+                      onChange={(e) => setMerchPhone(e.target.value)}
+                      placeholder="e.g. +233 24 000 0000"
+                      className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1 flex items-center gap-1.5">
+                      <MapPin size={12} className="text-[#ffb600]" /> Delivery Location (City / Street / Landmark) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={merchLocation}
+                      onChange={(e) => setMerchLocation(e.target.value)}
+                      placeholder="e.g. East Legon, Accra (Near American House)"
+                      className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1 flex items-center gap-1.5">
+                      <Clock size={12} className="text-[#ffb600]" /> Preferred Time of Delivery *
+                    </label>
+                    <select
+                      value={merchPreferredTime}
+                      onChange={(e) => setMerchPreferredTime(e.target.value)}
+                      className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
+                    >
+                      <option value="Morning (9:00 AM - 12:00 PM)">Morning (9:00 AM - 12:00 PM)</option>
+                      <option value="Afternoon (12:00 PM - 4:00 PM)">Afternoon (12:00 PM - 4:00 PM)</option>
+                      <option value="Evening (4:00 PM - 7:00 PM)">Evening (4:00 PM - 7:00 PM)</option>
+                      <option value="Weekend Delivery">Weekend Delivery</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowMerchPopup(false)}
+                      className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-[#9aa4b5] hover:text-white cursor-pointer"
+                    >
+                      Skip for Now
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={merchSubmitting}
+                      className="flex-1 py-3 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                    >
+                      {merchSubmitting
+                        ? "Reserving Merch Pack..."
+                        : "Claim T-Shirt, Tote Bag & Cap"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}

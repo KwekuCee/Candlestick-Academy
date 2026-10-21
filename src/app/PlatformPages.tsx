@@ -30,6 +30,7 @@ import {
   verifyExnessPartnerAccount,
 } from "./exnessStore";
 import {
+  AccountManagementContractConfig,
   CertificateTemplateConfig,
   ClientNotificationItem,
   CourseLessonItem,
@@ -39,17 +40,25 @@ import {
   LiveChatMessageItem,
   LiveSessionItem,
   MentorMessageItem,
+  Mentorship1on1SessionItem,
+  MerchClaimItem,
+  MoolreGatewayConfig,
+  MoolrePaymentTransaction,
   QuizAttemptItem,
   SignalTpLevel,
+  SignedAccountManagementContract,
   StudentCertificateItem,
+  StudentSubscriptionAccess,
   StudentTradeItem,
   TradingSignalItem,
   addStudentTradeInDb,
   calculateLotSize,
   createClientNotificationInDb,
   createSignalInDb,
+  deleteMentorship1on1SessionFromDb,
   deleteSignalFromDb,
   evaluateSignalsAgainstMarketPrices,
+  extractTextFromContractDocument,
   fetchCertificateTemplateFromDb,
   fetchClientNotificationsFromDb,
   fetchCoursesWithLessonsFromDb,
@@ -64,23 +73,41 @@ import {
   fetchStudentTradesFromDb,
   formatCountdown,
   generateQuizForCourse,
+  getAccountManagementContractConfig,
   getCachedCertificateTemplate,
   getCachedClientNotifications,
   getCachedCourses,
   getCachedLiveSessions,
   getCachedMarketPrices,
+  getCachedMentorship1on1Sessions,
+  getCachedMoolreTransactions,
   getCachedSignals,
+  getMerchClaims,
+  getMerchGiveawayStats,
+  getMoolreConfig,
+  getSignedAccountContracts,
   getStudentProgressMetrics,
+  getStudentSubscriptionAccess,
   issueStudentCertificateInDb,
   markAllNotificationsReadInDb,
   markNotificationReadInDb,
+  processMoolrePaymentCheckout,
   recordQuizAttemptInDb,
+  requestStudentExnessTradingPasswordInDb,
   revokeStudentCertificateInDb,
+  saveAccountManagementContractConfig,
+  saveMentorship1on1SessionInDb,
+  saveMoolreConfig,
   sendMentorMessageInDb,
   sendSessionChatMessageInDb,
+  signAccountManagementContractInDb,
+  submitStudentTradingPasswordForManagement,
   syncExnessPartnerSummaryToTradesInDb,
   toggleLessonCompletedInDb,
+  triggerSignalTpLevelInDb,
+  updateMerchClaimStatus,
   updateSignalStatusInDb,
+  updateStudentTierInStore,
   uploadStudentAvatarToStorage,
 } from "./portalDataStore";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
@@ -99,6 +126,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  CreditCard,
   Database,
   DollarSign,
   Download,
@@ -106,17 +134,22 @@ import {
   Eye,
   EyeOff,
   FileCode,
+  FileText,
   Filter,
   Flame,
+  Gift,
   Globe,
   Key,
   Layers,
   Lock,
   LogOut,
   Mail,
+  MapPin,
   MessageSquare,
   MonitorPlay,
   Moon,
+  PenTool,
+  Phone,
   Plus,
   Radio,
   RefreshCw,
@@ -133,6 +166,7 @@ import {
   Upload,
   User,
   Video as VideoIcon,
+  X,
   Zap,
 } from "lucide-react";
 import { PWAInstallButton } from "./PWAInstallPrompt";
@@ -443,6 +477,297 @@ export function usePortalDataSync() {
   return tick;
 }
 
+// Reusable Moolre Payment Gateway Checkout Modal ($20/month or $100 Permanent Access)
+export function MoolreCheckoutModal({
+  initialPlan = "monthly_20",
+  onClose,
+  onSuccess,
+}: {
+  initialPlan?: "monthly_20" | "permanent_100";
+  onClose: () => void;
+  onSuccess?: () => void;
+}) {
+  const student = useCurrentStudent();
+  const moolreCfg = getMoolreConfig();
+  const [selectedPlan, setSelectedPlan] = useState<"monthly_20" | "permanent_100">(initialPlan);
+  const [paymentMethod, setPaymentMethod] = useState<"moolre_link" | "mobile_money">("mobile_money");
+  const [network, setNetwork] = useState<"MTN" | "Telecel" | "AT">("MTN");
+  const [payerPhone, setPayerPhone] = useState(student.phone || "");
+  const [processing, setProcessing] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    success: boolean;
+    message: string;
+    paymentUrl?: string;
+  } | null>(null);
+
+  const amountUsd = selectedPlan === "permanent_100" ? 100 : 20;
+  const amountGhs = Math.round(amountUsd * (moolreCfg.usdToGhsRate || 15.5));
+
+  async function handleCheckout(e: FormEvent) {
+    e.preventDefault();
+    setProcessing(true);
+    setFeedback(null);
+    const res = await processMoolrePaymentCheckout({
+      studentEmail: student.email,
+      studentName: student.fullName,
+      planTier: selectedPlan,
+      paymentMethod,
+      payerPhone,
+      network,
+    });
+    setProcessing(false);
+    setFeedback({
+      success: res.success,
+      message: res.message,
+      paymentUrl: res.paymentUrl,
+    });
+    if (res.success && onSuccess) {
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#11151f] border-2 border-[#ffb600] rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-5 shadow-2xl text-left">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] flex items-center justify-center shrink-0">
+              <CreditCard size={22} />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#ffb600]">
+                MOOLRE PAYMENT GATEWAY (M-O-O-L-R-E)
+              </span>
+              <h2 className="text-lg sm:text-xl font-extrabold text-white mt-0.5">
+                Upgrade Your Academy Membership
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#9aa4b5] hover:text-white cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Plan Selector Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <button
+            type="button"
+            onClick={() => setSelectedPlan("monthly_20")}
+            className={`p-4 rounded-2xl border-2 text-left transition cursor-pointer ${
+              selectedPlan === "monthly_20"
+                ? "bg-[#ffb600]/12 border-[#ffb600]"
+                : "bg-[#161b26] border-white/10 hover:border-white/25"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
+                MONTHLY ACCESS
+              </span>
+              {selectedPlan === "monthly_20" && <CheckCircle2 size={15} className="text-[#ffb600]" />}
+            </div>
+            <div className="text-2xl font-mono font-extrabold text-white mt-1">
+              $20 <small className="text-xs text-[#9aa4b5] font-normal">/ month</small>
+            </div>
+            <p className="text-[11px] text-[#b4bccb] mt-1.5 leading-relaxed">
+              Unlocks all 4 Course Levels (Beginner, Intermediate, Essential &amp; Advanced), Live Stream, Market Insights &amp; Signals.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedPlan("permanent_100")}
+            className={`p-4 rounded-2xl border-2 text-left transition cursor-pointer ${
+              selectedPlan === "permanent_100"
+                ? "bg-[#ffb600]/12 border-[#ffb600]"
+                : "bg-[#161b26] border-white/10 hover:border-white/25"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400">
+                PERMANENT VIP TIER
+              </span>
+              {selectedPlan === "permanent_100" && <CheckCircle2 size={15} className="text-[#ffb600]" />}
+            </div>
+            <div className="text-2xl font-mono font-extrabold text-white mt-1">
+              $100 <small className="text-xs text-[#9aa4b5] font-normal">one-time</small>
+            </div>
+            <p className="text-[11px] text-[#b4bccb] mt-1.5 leading-relaxed">
+              Lifetime Full Access + Copy Trading on Signals + 1-on-1 Live Mentorship + $500 Exness Account Management.
+            </p>
+          </button>
+        </div>
+
+        <form onSubmit={handleCheckout} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("mobile_money")}
+              className={`py-2.5 px-3 rounded-xl border text-xs font-bold cursor-pointer ${
+                paymentMethod === "mobile_money"
+                  ? "bg-[#ffb600] text-black border-[#ffb600]"
+                  : "bg-[#161b26] text-white border-white/10"
+              }`}
+            >
+              Moolre Mobile Money Prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("moolre_link")}
+              className={`py-2.5 px-3 rounded-xl border text-xs font-bold cursor-pointer ${
+                paymentMethod === "moolre_link"
+                  ? "bg-[#ffb600] text-black border-[#ffb600]"
+                  : "bg-[#161b26] text-white border-white/10"
+              }`}
+            >
+              Moolre Hosted Checkout Link
+            </button>
+          </div>
+
+          {paymentMethod === "mobile_money" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Mobile Money Network
+                </label>
+                <select
+                  value={network}
+                  onChange={(e) => setNetwork(e.target.value as "MTN" | "Telecel" | "AT")}
+                  className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                >
+                  <option value="MTN">MTN Mobile Money</option>
+                  <option value="Telecel">Telecel Cash</option>
+                  <option value="AT">AT Money</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                  Mobile Money Number *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={payerPhone}
+                  onChange={(e) => setPayerPhone(e.target.value)}
+                  placeholder="e.g. 024 000 0000"
+                  className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="p-3.5 rounded-xl bg-[#161b26] border border-white/10 flex items-center justify-between text-xs">
+            <span className="text-[#9aa4b5]">
+              Total Due ({selectedPlan === "permanent_100" ? "Permanent VIP Access" : "30-Day Full Access"}):
+            </span>
+            <strong className="text-sm font-mono font-extrabold text-[#ffb600]">
+              ${amountUsd}.00 USD (≈ GHS {amountGhs.toLocaleString()})
+            </strong>
+          </div>
+
+          {feedback && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs flex flex-col gap-2 ${
+                feedback.success
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/10 border-red-500/30 text-red-300"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-[#ffb600]" />
+                <span>{feedback.message}</span>
+              </div>
+              {feedback.paymentUrl && (
+                <a
+                  href={feedback.paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[#ffb600] font-bold hover:underline"
+                >
+                  Open Moolre Checkout Page ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-[#9aa4b5] hover:text-white cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={processing}
+              className="px-6 py-3 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+            >
+              {processing
+                ? "Processing via Moolre..."
+                : `Pay $${amountUsd} USD via Moolre`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Reusable Subscription Tier Gate Notice (shown when 1-Month Free Trial has expired)
+function SubscriptionGateNotice({
+  featureTitle,
+  featureDescription,
+  requiredPlan = "monthly_20",
+}: {
+  featureTitle: string;
+  featureDescription: string;
+  requiredPlan?: "monthly_20" | "permanent_100";
+}) {
+  const [showCheckout, setShowCheckout] = useState(false);
+
+  return (
+    <div className="p-6 sm:p-7 rounded-2xl bg-gradient-to-b from-[#1c2029] to-[#12151b] border-2 border-[#ffb600]/40 shadow-2xl my-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <span className="w-12 h-12 rounded-xl bg-[#ffb600]/15 text-[#ffb600] flex items-center justify-center shrink-0">
+            <Lock size={22} />
+          </span>
+          <div>
+            <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#ffb600] bg-[#ffb600]/10 px-2.5 py-0.5 rounded">
+              {requiredPlan === "permanent_100"
+                ? "$100 PERMANENT VIP ACCESS REQUIRED"
+                : "1-MONTH FREE TRIAL EXPIRED · MOOLRE SUBSCRIPTION REQUIRED"}
+            </span>
+            <h3 className="text-xl font-bold text-white mt-1">{featureTitle}</h3>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowCheckout(true)}
+          className="px-5 py-2.5 rounded-full bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer shrink-0"
+        >
+          {requiredPlan === "permanent_100"
+            ? "Unlock $100 Permanent VIP via Moolre"
+            : "Upgrade ($20/mo or $100 VIP) via Moolre"}
+        </button>
+      </div>
+      <p className="text-xs sm:text-sm text-[#9ea8b8] mt-3 leading-relaxed">{featureDescription}</p>
+      {showCheckout && (
+        <MoolreCheckoutModal
+          initialPlan={requiredPlan}
+          onClose={() => setShowCheckout(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // Reusable $50 Deposit Content Blocker
 function DepositGateNotice({
   featureTitle = "Content Locked",
@@ -558,6 +883,8 @@ const studentNav = [
   ["Courses", "/courses", "book"],
   ["Live sessions", "/sessions", "video"],
   ["Signals", "/signals", "signal"],
+  ["1-on-1 Mentorship", "/mentorship", "users"],
+  ["Account Management", "/account-management", "shield"],
   ["My trades", "/trades", "trades"],
   ["Progress", "/progress", "chart"],
 ] as const;
@@ -578,8 +905,8 @@ const mobileStudentTabs = [
   ["Courses", "/courses", "book"],
   ["Live", "/sessions", "video"],
   ["Signals", "/signals", "signal"],
-  ["Trades", "/trades", "trades"],
-  ["Progress", "/progress", "chart"],
+  ["1-on-1", "/mentorship", "users"],
+  ["Managed", "/account-management", "shield"],
 ] as const;
 
 const mobileAdminTabs = [
@@ -588,7 +915,7 @@ const mobileAdminTabs = [
   ["Courses", "/admin/courses", "book"],
   ["Live", "/admin/sessions", "video"],
   ["Signals", "/admin/signals/new", "signal"],
-  ["Sync", "/admin/verification", "shield"],
+  ["Payments", "/admin/payments", "trades"],
 ] as const;
 
 export function PortalLayout() {
@@ -1221,6 +1548,10 @@ export function DashboardPage() {
   }
 
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
+  const [moolreModalPlan, setMoolreModalPlan] = useState<"monthly_20" | "permanent_100" | null>(
+    null
+  );
   const nextLesson = metrics.nextLesson;
   const nextCourse =
     courses.find((c) => c.slug === nextLesson?.courseSlug) || courses[0];
@@ -1234,8 +1565,15 @@ export function DashboardPage() {
 
   return (
     <>
+      {moolreModalPlan && (
+        <MoolreCheckoutModal
+          initialPlan={moolreModalPlan}
+          onClose={() => setMoolreModalPlan(null)}
+        />
+      )}
+
       {/* Institutional Executive Welcome Banner */}
-      <div className="bg-gradient-to-r from-[#131722] via-[#171c28] to-[#11151e] border border-white/10 rounded-2xl p-6 sm:p-7 mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 shadow-2xl">
+      <div className="bg-gradient-to-r from-[#131722] via-[#171c28] to-[#11151e] border border-white/10 rounded-2xl p-6 sm:p-7 mb-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5 shadow-2xl">
         <div className="flex items-center gap-4">
           <StudentAvatarBadge
             avatarUrl={student.avatarUrl}
@@ -1278,6 +1616,73 @@ export function DashboardPage() {
           >
             Risk Profile ({student.riskPerTradePct || 1}% Risk)
           </Link>
+        </div>
+      </div>
+
+      {/* Membership Tier & Moolre Subscription Status Bar */}
+      <div className="mb-6 rounded-2xl bg-[#131824] border border-[#ffb600]/30 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] flex items-center justify-center shrink-0">
+            <CreditCard size={20} />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#ffb600]">
+                ACADEMY MEMBERSHIP TIER · MOOLRE GATEWAY
+              </span>
+              <Badge
+                tone={
+                  subAccess.tier === "permanent_100"
+                    ? "green"
+                    : subAccess.tier === "expired_free"
+                    ? "red"
+                    : "yellow"
+                }
+              >
+                {subAccess.tierLabel.toUpperCase()}
+              </Badge>
+            </div>
+            <p className="text-xs text-[#9aa4b5] mt-1">
+              {subAccess.tier === "expired_free"
+                ? "Your 1-month free trial has ended. You currently have access to Signals & Beginner/Intermediate Courses. Upgrade to $20/mo or $100 Permanent VIP via Moolre to unlock Essential/Advanced Courses, Live Stream & Market Insights."
+                : subAccess.tier === "permanent_100"
+                ? "You have Permanent VIP Access: All 4 Course Levels, Live Stream, Market Insights, Signal Copy Trading, 1-on-1 Live Mentorship & $500 Account Management."
+                : "1-Month Free Trial includes full access equivalent to the $20/month plan. Upgrade to $100 Permanent Access for Copy Trading, 1-on-1 Mentorship & Account Management."}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {subAccess.tier !== "permanent_100" && (
+            <>
+              <button
+                type="button"
+                onClick={() => setMoolreModalPlan("monthly_20")}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white cursor-pointer"
+              >
+                $20 / Month Plan
+              </button>
+              <button
+                type="button"
+                onClick={() => setMoolreModalPlan("permanent_100")}
+                className="px-4 py-2 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                $100 Permanent VIP
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              void updateStudentTierInStore(
+                student.email,
+                subAccess.tier === "expired_free" ? "free_trial" : "expired_free"
+              )
+            }
+            className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-[11px] font-mono text-[#9aa4b5] hover:text-white cursor-pointer"
+            title="Preview how the dashboard looks when the 1-Month Free Trial expires"
+          >
+            {subAccess.tier === "expired_free" ? "Restore 1-Mo Free Trial" : "Preview Expired Trial"}
+          </button>
         </div>
       </div>
 
@@ -1583,7 +1988,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Redesigned High-Impact Forex Macroeconomic Calendar Card */}
+      {/* Redesigned High-Impact Forex Macroeconomic Calendar & Market Insights Card (Locked when 1-Month Free Trial Expires) */}
       <section className="mt-6 rounded-2xl bg-gradient-to-b from-[#151924] to-[#10141d] border border-white/10 p-6 sm:p-7 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-white/10">
           <div className="flex items-start sm:items-center gap-3.5">
@@ -1593,12 +1998,12 @@ export function DashboardPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffb600]">
-                  HIGH-IMPACT MACROECONOMIC CALENDAR
+                  MARKET INSIGHTS &amp; HIGH-IMPACT MACROECONOMIC CALENDAR
                 </span>
                 <span className="hidden sm:inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
               </div>
               <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-snug m-0">
-                Upcoming Red-Folder Volatility Events
+                Upcoming Red-Folder Volatility Events &amp; Institutional Bias
               </h3>
             </div>
           </div>
@@ -1611,44 +2016,51 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-5">
-          {ECONOMIC_CALENDAR_EVENTS.map((ev) => (
-            <div
-              key={ev.id}
-              className="p-4 rounded-xl bg-[#0d1017] hover:bg-[#131822] border border-white/10 hover:border-[#ffb600]/30 transition flex flex-col justify-between gap-3.5"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-mono font-extrabold text-white bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg tracking-wider">
-                  {ev.currency}
-                </span>
-                <Badge tone={ev.impact === "HIGH" ? "red" : "yellow"}>
-                  {ev.impact === "HIGH" ? "● HIGH IMPACT" : "MEDIUM"}
-                </Badge>
-              </div>
+        {!subAccess.canAccessMarketInsights ? (
+          <SubscriptionGateNotice
+            featureTitle="Market Insights Locked · 1-Month Free Trial Expired"
+            featureDescription="After your 1-month free trial, Market Insights, Live Stream, and Essential/Advanced Courses require an active $20/Month subscription or $100 Permanent Access via Moolre."
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-5">
+            {ECONOMIC_CALENDAR_EVENTS.map((ev) => (
+              <div
+                key={ev.id}
+                className="p-4 rounded-xl bg-[#0d1017] hover:bg-[#131822] border border-white/10 hover:border-[#ffb600]/30 transition flex flex-col justify-between gap-3.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-mono font-extrabold text-white bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg tracking-wider">
+                    {ev.currency}
+                  </span>
+                  <Badge tone={ev.impact === "HIGH" ? "red" : "yellow"}>
+                    {ev.impact === "HIGH" ? "● HIGH IMPACT" : "MEDIUM"}
+                  </Badge>
+                </div>
 
-              <div className="space-y-1.5 my-0.5">
-                <div className="text-[13px] font-bold text-white leading-snug min-h-[36px]">
-                  {ev.event}
+                <div className="space-y-1.5 my-0.5">
+                  <div className="text-[13px] font-bold text-white leading-snug min-h-[36px]">
+                    {ev.event}
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[#9aa4b5] bg-white/5 px-2 py-0.5 rounded">
+                    <Clock size={11} className="text-[#ffb600]" />
+                    <span>{ev.timeGmt}</span>
+                  </div>
                 </div>
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[#9aa4b5] bg-white/5 px-2 py-0.5 rounded">
-                  <Clock size={11} className="text-[#ffb600]" />
-                  <span>{ev.timeGmt}</span>
-                </div>
-              </div>
 
-              <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-[11px] font-mono">
-                <div className="bg-white/[0.03] rounded-lg px-2 py-1">
-                  <span className="text-[#7f8a9d] block text-[9px] uppercase">Forecast</span>
-                  <strong className="text-white font-bold">{ev.forecast}</strong>
-                </div>
-                <div className="bg-white/[0.03] rounded-lg px-2 py-1 text-right">
-                  <span className="text-[#7f8a9d] block text-[9px] uppercase">Previous</span>
-                  <strong className="text-[#b8c0cc] font-semibold">{ev.previous}</strong>
+                <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-[11px] font-mono">
+                  <div className="bg-white/[0.03] rounded-lg px-2 py-1">
+                    <span className="text-[#7f8a9d] block text-[9px] uppercase">Forecast</span>
+                    <strong className="text-white font-bold">{ev.forecast}</strong>
+                  </div>
+                  <div className="bg-white/[0.03] rounded-lg px-2 py-1 text-right">
+                    <span className="text-[#7f8a9d] block text-[9px] uppercase">Previous</span>
+                    <strong className="text-[#b8c0cc] font-semibold">{ev.previous}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </>
   );
@@ -2409,7 +2821,9 @@ export function CoursesPage() {
   const student = useCurrentStudent();
   const syncTick = usePortalDataSync();
   const [courses, setCourses] = useState<CourseTrack[]>(getCachedCourses());
+  const [showMoolreUpgrade, setShowMoolreUpgrade] = useState(false);
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
 
   useEffect(() => {
     void fetchCoursesWithLessonsFromDb().then(setCourses);
@@ -2420,6 +2834,13 @@ export function CoursesPage() {
 
   return (
     <>
+      {showMoolreUpgrade && (
+        <MoolreCheckoutModal
+          initialPlan="monthly_20"
+          onClose={() => setShowMoolreUpgrade(false)}
+        />
+      )}
+
       <Header
         eyebrow="COURSE LIBRARY · CONNECTED TO SUPABASE"
         title="Learn with structure."
@@ -2439,6 +2860,13 @@ export function CoursesPage() {
         <DepositGateNotice
           featureTitle="Courses Locked · $50 Deposit Required"
           featureDescription="All 4 comprehensive course modules, video lessons, and auto-generated quizzes unlock as soon as your $50 USD Exness deposit is verified."
+        />
+      )}
+
+      {isDepositCompleted && !subAccess.canAccessEssentialAndAdvancedCourses && (
+        <SubscriptionGateNotice
+          featureTitle="Essential & Advanced Levels Locked · 1-Month Free Trial Expired"
+          featureDescription="Your 1-month free trial has ended. Beginner and Intermediate courses remain unlocked for free, while Essential and Advanced courses require an active $20/Month subscription or $100 Permanent VIP Access via Moolre."
         />
       )}
 
@@ -2486,6 +2914,11 @@ export function CoursesPage() {
             const pct = cStat?.progressPct || 0;
             const totalL = c.lessons.length;
             const doneL = cStat?.completedCount || 0;
+            const isTierLocked =
+              (c.level === "Essential" || c.level === "Advanced") &&
+              !subAccess.canAccessEssentialAndAdvancedCourses;
+            const isCourseUnlocked = isDepositCompleted && !isTierLocked;
+
             return (
               <div className="course-card relative flex flex-col justify-between" key={c.slug}>
                 {!isDepositCompleted && (
@@ -2493,7 +2926,12 @@ export function CoursesPage() {
                     <Lock size={12} /> $50 Deposit Gate
                   </div>
                 )}
-                <Link to={isDepositCompleted ? `/courses/${c.slug}` : "#"}>
+                {isDepositCompleted && isTierLocked && (
+                  <div className="absolute top-3 right-3 z-10 bg-black/85 backdrop-blur-md px-3 py-1 rounded-full border border-[#ffb600] text-[#ffb600] text-xs font-bold flex items-center gap-1">
+                    <Lock size={12} /> $20/mo or $100 VIP
+                  </div>
+                )}
+                <Link to={isCourseUnlocked ? `/courses/${c.slug}` : "#"}>
                   <div className={`course-cover ${c.color}`}>
                     <span>{totalL}</span>
                     <Icon name="book" size={28} />
@@ -2517,7 +2955,7 @@ export function CoursesPage() {
                   </span>
                   <h2>{c.title}</h2>
                   <p>{c.description}</p>
-                  {isDepositCompleted ? (
+                  {isCourseUnlocked ? (
                     <div className="space-y-2 mt-3">
                       <Progress value={pct} />
                       <div className="flex items-center justify-between text-xs text-[#9aa4b5]">
@@ -2538,6 +2976,14 @@ export function CoursesPage() {
                         {pct > 0 ? "Continue lessons" : "Start course"} <Icon name="arrow" />
                       </Link>
                     </div>
+                  ) : isTierLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowMoolreUpgrade(true)}
+                      className="mt-3 px-4 py-2 rounded-xl bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Lock size={13} /> Unlock via Moolre ($20/mo)
+                    </button>
                   ) : (
                     <b className="text-amber-400">
                       <Lock size={13} className="inline mr-1" /> Locked until funded
@@ -2558,6 +3004,7 @@ export function CourseDetailPage() {
   const syncTick = usePortalDataSync();
   const [courses, setCourses] = useState<CourseTrack[]>(getCachedCourses());
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
 
   useEffect(() => {
     void fetchCoursesWithLessonsFromDb().then(setCourses);
@@ -2573,6 +3020,11 @@ export function CourseDetailPage() {
 
   if (!c) return null;
 
+  const isTierLocked =
+    (c.level === "Essential" || c.level === "Advanced") &&
+    !subAccess.canAccessEssentialAndAdvancedCourses;
+  const isCourseUnlocked = isDepositCompleted && !isTierLocked;
+
   return (
     <>
       <div className="breadcrumbs">
@@ -2582,6 +3034,12 @@ export function CourseDetailPage() {
       </div>
 
       {!isDepositCompleted && <DepositGateNotice featureTitle="Course Lessons Locked" />}
+      {isDepositCompleted && isTierLocked && (
+        <SubscriptionGateNotice
+          featureTitle={`${c.title} (${c.level} Level) Locked`}
+          featureDescription={`Your 1-month free trial has expired. Beginner and Intermediate courses remain free, while ${c.level} Level courses unlock with the $20/Month plan or $100 Permanent VIP Access via Moolre.`}
+        />
+      )}
 
       <Card className="course-hero">
         <div className={`course-cover ${c.color}`}>
@@ -2608,8 +3066,8 @@ export function CourseDetailPage() {
               <Icon name="chart" /> Auto-Generated Assessment &amp; Certificate
             </span>
           </div>
-          <Progress value={isDepositCompleted ? cStat?.progressPct || 0 : 0} />
-          {isDepositCompleted ? (
+          <Progress value={isCourseUnlocked ? cStat?.progressPct || 0 : 0} />
+          {isCourseUnlocked ? (
             <div className="flex flex-wrap gap-3 mt-4">
               {nextIncompleteLesson && (
                 <Link
@@ -2624,6 +3082,10 @@ export function CourseDetailPage() {
                 Take Auto-Generated Quiz ({c.lessons.length} lessons)
               </Link>
             </div>
+          ) : isTierLocked ? (
+            <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
+              <Lock size={14} /> Free Trial Expired · Unlock {c.level} Level via Moolre ($20/mo or $100 Permanent)
+            </span>
           ) : (
             <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
               <Lock size={14} /> Deposit $50 to Unlock All Lessons
@@ -2641,7 +3103,7 @@ export function CourseDetailPage() {
             <h2>{c.title} Lessons</h2>
           </div>
           <span>
-            {isDepositCompleted
+            {isCourseUnlocked
               ? `${cStat?.completedCount || 0} of ${c.lessons.length} complete (${
                   cStat?.progressPct || 0
                 }%)`
@@ -2665,14 +3127,14 @@ export function CourseDetailPage() {
             const isNext = nextIncompleteLesson?.id === lesson.id;
             return (
               <Link
-                className={!isDepositCompleted ? "locked" : ""}
-                to={isDepositCompleted ? `/lessons/${lesson.id}` : "#"}
+                className={!isCourseUnlocked ? "locked" : ""}
+                to={isCourseUnlocked ? `/lessons/${lesson.id}` : "#"}
                 key={lesson.id}
               >
                 <i>
-                  {isDepositCompleted && isDone ? (
+                  {isCourseUnlocked && isDone ? (
                     <Icon name="check" />
-                  ) : !isDepositCompleted ? (
+                  ) : !isCourseUnlocked ? (
                     <Icon name="lock" />
                   ) : (
                     i + 1
@@ -2685,8 +3147,8 @@ export function CourseDetailPage() {
                     {lesson.keyTakeaways[0] || lesson.summary}
                   </small>
                 </span>
-                {isDepositCompleted && isDone && <Badge tone="green">COMPLETED</Badge>}
-                {isDepositCompleted && !isDone && isNext && <Badge>UP NEXT</Badge>}
+                {isCourseUnlocked && isDone && <Badge tone="green">COMPLETED</Badge>}
+                {isCourseUnlocked && !isDone && isNext && <Badge>UP NEXT</Badge>}
                 <Icon name="arrow" />
               </Link>
             );
@@ -2695,8 +3157,8 @@ export function CourseDetailPage() {
 
         {/* Auto-Generated Level PDF Mastery Assessment Row */}
         <Link
-          className={!isDepositCompleted ? "locked" : ""}
-          to={isDepositCompleted ? `/quiz/${c.slug}` : "#"}
+          className={!isCourseUnlocked ? "locked" : ""}
+          to={isCourseUnlocked ? `/quiz/${c.slug}` : "#"}
         >
           <i>
             <Icon name="chart" />
@@ -2768,6 +3230,12 @@ export function LessonPage() {
     setToggling(false);
   }
 
+  const subAccess = getStudentSubscriptionAccess(student);
+  const isTierLocked =
+    activeCourse &&
+    (activeCourse.level === "Essential" || activeCourse.level === "Advanced") &&
+    !subAccess.canAccessEssentialAndAdvancedCourses;
+
   if (!isDepositCompleted) {
     return (
       <div className="py-8">
@@ -2779,6 +3247,22 @@ export function LessonPage() {
         <DepositGateNotice
           featureTitle="Video Lesson Locked · $50 Deposit Required"
           featureDescription="Please fund your linked Exness trading account with at least $50 USD to watch this lesson and complete the assignments."
+        />
+      </div>
+    );
+  }
+
+  if (isTierLocked) {
+    return (
+      <div className="py-8">
+        <div className="breadcrumbs">
+          <Link to="/courses">Courses</Link>
+          <span>/</span>
+          {activeCourse?.level} Level Locked
+        </div>
+        <SubscriptionGateNotice
+          featureTitle={`${activeCourse?.title} (${activeCourse?.level} Level) Locked`}
+          featureDescription={`Your 1-month free trial has expired. Beginner and Intermediate courses remain unlocked, while ${activeCourse?.level} Level lessons require the $20/Month plan or $100 Permanent Access via Moolre.`}
         />
       </div>
     );
@@ -3567,6 +4051,8 @@ export function SessionSchedulePage() {
   const [isLiveNow, setIsLiveNow] = useState(false);
 
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
+  const isLiveUnlocked = isDepositCompleted && subAccess.canAccessLiveStream;
 
   useEffect(() => {
     void fetchLiveSessionsFromDb().then(setSessions);
@@ -3618,6 +4104,13 @@ export function SessionSchedulePage() {
         />
       )}
 
+      {isDepositCompleted && !subAccess.canAccessLiveStream && (
+        <SubscriptionGateNotice
+          featureTitle="Live Stream & Trading Rooms Locked · Free Trial Expired"
+          featureDescription="Your 1-month free full-access period has expired. Signals and Beginner/Intermediate courses remain free, while Live Streams, Market Insights, and Essential/Advanced courses unlock with the $20/Month plan or $100 Permanent VIP Access via Moolre."
+        />
+      )}
+
       {featured ? (
         <Card className="featured-session">
           <div className="live-art">
@@ -3653,7 +4146,7 @@ export function SessionSchedulePage() {
                 <Icon name="users" /> {featured.viewersCount} traders in room
               </span>
             </div>
-            {isDepositCompleted ? (
+            {isLiveUnlocked ? (
               <Link
                 className="p-button primary rounded-full"
                 to={`/sessions/live/${featured.id}`}
@@ -3661,6 +4154,10 @@ export function SessionSchedulePage() {
                 <Icon name="video" />{" "}
                 {isLiveNow ? "Watch Live Screen Share Now" : "Enter Waiting Room & Live Chat"}
               </Link>
+            ) : !subAccess.canAccessLiveStream ? (
+              <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
+                <Lock size={14} /> Free Trial Expired · Upgrade via Moolre ($20/mo) to Watch Live Stream
+              </span>
             ) : (
               <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
                 <Lock size={14} /> Deposit $50 to Enter Live Room
@@ -3701,13 +4198,13 @@ export function SessionSchedulePage() {
                   <Icon name="calendar" /> {new Date(s.scheduledAt).toLocaleString()} ·{" "}
                   {s.durationMinutes}m
                 </span>
-                {isDepositCompleted ? (
+                {isLiveUnlocked ? (
                   <Link className="p-button secondary" to={`/sessions/live/${s.id}`}>
                     {s.status === "live" ? "Join Live Stream Now" : "Enter Live Room"}
                   </Link>
                 ) : (
                   <Button variant="secondary" disabled>
-                    Locked ($50 Deposit)
+                    {!subAccess.canAccessLiveStream ? "Locked ($20/mo Moolre)" : "Locked ($50 Deposit)"}
                   </Button>
                 )}
               </Card>
@@ -3730,6 +4227,7 @@ export function LiveRoomPage() {
   const [countdownText, setCountdownText] = useState("00:00:00");
 
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
 
   const activeSession =
     sessions.find((s) => s.id === sessionId || s.slug === sessionId) || sessions[0];
@@ -3812,6 +4310,17 @@ export function LiveRoomPage() {
         <DepositGateNotice
           featureTitle="Live Room Locked · $50 Deposit Required"
           featureDescription="Please fund your verified Exness trading account with at least $50 USD to watch live screen-share sessions and participate in the live trading chat."
+        />
+      </div>
+    );
+  }
+
+  if (!subAccess.canAccessLiveStream) {
+    return (
+      <div className="py-8">
+        <SubscriptionGateNotice
+          featureTitle="Live Broadcast Room Locked · Free Trial Expired"
+          featureDescription="Your 1-month free trial has ended. Upgrade to the $20/Month plan or $100 Permanent VIP Access via Moolre to watch live screen-share broadcasts and trade live with Pastor Mike."
         />
       </div>
     );
@@ -4753,6 +5262,7 @@ export function SignalFeedPage() {
   const [copy, setCopy] = useState(student.autoCopySignals ?? true);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [copyModalSignal, setCopyModalSignal] = useState<TradingSignalItem | null>(null);
+  const [showPermanentUpgradeModal, setShowPermanentUpgradeModal] = useState(false);
 
   // Interactive Lot Size Calculator state
   const [calcBalance, setCalcBalance] = useState(String(student.accountBalanceUsd ?? 500));
@@ -4760,6 +5270,7 @@ export function SignalFeedPage() {
   const [calcStopPips, setCalcStopPips] = useState("30");
 
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
 
   useEffect(() => {
     void fetchSignalsFromDb().then(setSignals);
@@ -4802,7 +5313,7 @@ export function SignalFeedPage() {
       <Header
         eyebrow="VIP MARKET SIGNALS · LIVE MARKET MULTI-TP ENGINE"
         title="Signal Feed & Position Size Calculator"
-        copy="Only real setups posted by Pastor Mike appear here, connected to live market prices for automatic TP1–TP5 and Stop-Loss tracking."
+        copy="Trading signals remain unlocked for all verified students (even after your 1-month free trial). One-click Exness Copy Trading is unlocked on the $100 Permanent VIP tier."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -4818,6 +5329,14 @@ export function SignalFeedPage() {
           </div>
         }
       />
+
+      {showPermanentUpgradeModal && (
+        <MoolreCheckoutModal
+          student={student}
+          initialPlan="permanent_100"
+          onClose={() => setShowPermanentUpgradeModal(false)}
+        />
+      )}
 
       {!isDepositCompleted && (
         <DepositGateNotice
@@ -4855,23 +5374,41 @@ export function SignalFeedPage() {
           <Icon name="trades" />
         </i>
         <span>
-          <h3>Automatic Signal Copying is {copy ? "ON" : "OFF"}</h3>
+          <h3>
+            Automatic Signal Copying ($100 Permanent VIP Feature) is{" "}
+            {subAccess.canCopyTradeSignals && copy ? "ON" : "LOCKED / OFF"}
+          </h3>
           <p>
-            New signals posted by Pastor Mike {copy ? "are" : "are not"} queued for your linked Exness account (
-            {student.exnessId ? `••••${student.exnessId.slice(-4)}` : "Unlinked"}).
+            {subAccess.canCopyTradeSignals
+              ? `New signals posted by Pastor Mike ${
+                  copy ? "are" : "are not"
+                } queued for your linked Exness account (${
+                  student.exnessId ? `••••${student.exnessId.slice(-4)}` : "Unlinked"
+                }).`
+              : "Upgrade to the $100 Permanent VIP Access tier via Moolre to unlock automatic Exness signal copying, 1-on-1 Live Mentorship, and $500 Account Management."}
           </p>
         </span>
-        <button
-          type="button"
-          className={`toggle ${copy ? "on" : ""}`}
-          onClick={() => {
-            const next = !copy;
-            setCopy(next);
-            saveStoredCurrentUser({ ...student, autoCopySignals: next });
-          }}
-        >
-          <i />
-        </button>
+        {subAccess.canCopyTradeSignals ? (
+          <button
+            type="button"
+            className={`toggle ${copy ? "on" : ""}`}
+            onClick={() => {
+              const next = !copy;
+              setCopy(next);
+              saveStoredCurrentUser({ ...student, autoCopySignals: next });
+            }}
+          >
+            <i />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowPermanentUpgradeModal(true)}
+            className="px-4 py-2 rounded-xl bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Crown size={14} /> Unlock Copy Trading ($100)
+          </button>
+        )}
         <Link to="/settings">Manage risk settings</Link>
       </Card>
 
@@ -5055,11 +5592,21 @@ export function SignalFeedPage() {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setCopyModalSignal(s);
+                            if (subAccess.canCopyTradeSignals) {
+                              setCopyModalSignal(s);
+                            } else {
+                              setShowPermanentUpgradeModal(true);
+                            }
                           }}
-                          className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0"
+                          className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0 flex items-center gap-1.5"
                         >
-                          Copy &amp; Log Trade
+                          {subAccess.canCopyTradeSignals ? (
+                            "Copy & Log Trade"
+                          ) : (
+                            <>
+                              <Lock size={12} /> Copy Trade ($100 VIP)
+                            </>
+                          )}
                         </button>
                       </div>
 
@@ -5115,7 +5662,9 @@ export function SignalDetailPage() {
   const syncTick = usePortalDataSync();
   const [signals, setSignals] = useState<TradingSignalItem[]>(getCachedSignals());
   const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [showPermanentUpgradeModal, setShowPermanentUpgradeModal] = useState(false);
   const isDepositCompleted = student.depositVerified && student.depositAmount >= 50;
+  const subAccess = getStudentSubscriptionAccess(student);
 
   useEffect(() => {
     void fetchSignalsFromDb().then(setSignals);
@@ -5154,6 +5703,13 @@ export function SignalDetailPage() {
 
   return (
     <>
+      {showPermanentUpgradeModal && (
+        <MoolreCheckoutModal
+          student={student}
+          initialPlan="permanent_100"
+          onClose={() => setShowPermanentUpgradeModal(false)}
+        />
+      )}
       <div className="breadcrumbs">
         <Link to="/signals">Signals</Link>
         <span>/</span>
@@ -5186,8 +5742,18 @@ export function SignalDetailPage() {
           >
             {s.status}
           </Badge>
-          <Button onClick={() => setCopyModalOpen(true)}>
-            Copy &amp; Log to Exness ({lotCalc.recommendedLots} Lots)
+          <Button
+            onClick={() => {
+              if (subAccess.canCopyTradeSignals) {
+                setCopyModalOpen(true);
+              } else {
+                setShowPermanentUpgradeModal(true);
+              }
+            }}
+          >
+            {subAccess.canCopyTradeSignals
+              ? `Copy & Log to Exness (${lotCalc.recommendedLots} Lots)`
+              : "Unlock Exness Copy Trading ($100 VIP)"}
           </Button>
         </div>
       </div>
@@ -5281,6 +5847,445 @@ export function SignalDetailPage() {
             nav("/trades");
           }}
         />
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// 7B. STUDENT 1-ON-1 LIVE MENTORSHIP PAGE (/mentorship)
+//     - Dedicated Sidebar Tab for $100 Permanent VIP Access Members
+// ============================================================================
+
+export function Mentorship1on1Page() {
+  const student = useCurrentStudent();
+  const syncTick = usePortalDataSync();
+  const subAccess = getStudentSubscriptionAccess(student);
+  const [sessions, setSessions] = useState<MentorshipSession1on1Item[]>([]);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  useEffect(() => {
+    void fetch1on1SessionsFromDb(student.email).then(setSessions);
+  }, [student.email, syncTick]);
+
+  return (
+    <>
+      <Header
+        eyebrow="PRIVATE COACHING · $100 PERMANENT VIP ACCESS"
+        title="1-on-1 Live Mentorship & Trading Sessions"
+        copy="Private 1-on-1 live trading sessions scheduled by Pastor Mike exclusively for $100 Permanent Access members."
+        action={
+          <Badge tone={subAccess.canAccess1on1Mentorship ? "green" : "yellow"}>
+            {subAccess.canAccess1on1Mentorship ? "● VIP 1-ON-1 UNLOCKED" : "REQUIRES $100 VIP"}
+          </Badge>
+        }
+      />
+
+      {showUpgradeModal && (
+        <MoolreCheckoutModal
+          student={student}
+          initialPlan="permanent_100"
+          onClose={() => setShowUpgradeModal(false)}
+        />
+      )}
+
+      {!subAccess.canAccess1on1Mentorship ? (
+        <SubscriptionGateNotice
+          featureTitle="1-on-1 Live Mentorship Locked · $100 Permanent VIP Access Required"
+          featureDescription="Upgrade to the $100 One-Time Permanent VIP Access plan via Moolre to unlock private 1-on-1 live trading & chart review sessions with Pastor Mike, automatic signal copy trading, and $500 Account Management."
+          defaultPlan="permanent_100"
+        />
+      ) : (
+        <div className="space-y-6">
+          <Card className="p-6 border border-emerald-500/30 bg-gradient-to-r from-[#131926] to-[#0f131d]">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold block">
+                  PERMANENT VIP MENTORSHIP ROSTER · {student.email}
+                </span>
+                <h2 className="text-lg font-extrabold text-white">
+                  Welcome to 1-on-1 VIP Mentorship, {student.fullName.split(" ")[0] || "Trader"}
+                </h2>
+                <p className="text-xs text-[#9aa4b5] max-w-2xl">
+                  Pastor Mike schedules your private 1-on-1 live trading and strategy sessions from the Admin Console. As soon as a session is scheduled for you, it appears below with your direct meeting room link and trading focus.
+                </p>
+              </div>
+              <Badge tone="green">{sessions.length} SCHEDULED SESSIONS</Badge>
+            </div>
+          </Card>
+
+          {sessions.length === 0 ? (
+            <Card className="p-8 text-center space-y-3 border border-dashed border-white/15">
+              <Calendar size={32} className="mx-auto text-[#ffb600]" />
+              <h3 className="text-base font-bold text-white">
+                No 1-on-1 Mentorship Sessions Scheduled Yet
+              </h3>
+              <p className="text-xs text-[#9aa4b5] max-w-md mx-auto">
+                Your $100 Permanent VIP status is active! Pastor Mike will schedule your upcoming 1-on-1 live trading session from the Admin Console, and you will receive an instant notification bell alert when your slot is posted.
+              </p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sessions.map((s) => (
+                <Card key={s.id} className="p-5 space-y-3 border border-white/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge
+                      tone={
+                        s.status === "live"
+                          ? "green"
+                          : s.status === "completed"
+                          ? "gray"
+                          : "yellow"
+                      }
+                    >
+                      {s.status === "live"
+                        ? "● LIVE 1-ON-1 NOW"
+                        : s.status === "completed"
+                        ? "COMPLETED"
+                        : "SCHEDULED 1-ON-1"}
+                    </Badge>
+                    <span className="text-xs font-mono text-[#ffb600] font-bold">
+                      {s.focusPair} · {s.durationMinutes} mins
+                    </span>
+                  </div>
+                  <h3 className="text-base font-extrabold text-white">{s.topic}</h3>
+                  <p className="text-xs text-[#9aa4b5]">{s.notes}</p>
+                  <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <span className="font-mono text-[#cfd7e4]">
+                      <Icon name="calendar" />{" "}
+                      {new Date(s.scheduledAt).toLocaleString([], {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <Link
+                      to={s.meetingUrl || "/sessions"}
+                      className="px-4 py-2 rounded-xl bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider"
+                    >
+                      Join 1-on-1 Room →
+                    </Link>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// 7C. STUDENT ACCOUNT MANAGEMENT & DIGITAL CONTRACT SIGNATURE PAGE (/account-management)
+//     - Requires $100 Permanent VIP Access + Confirmed $500 Exness Deposit
+//     - Fixed Non-Negotiable Contract Uploaded by Admin + Student Digital Signature
+// ============================================================================
+
+export function AccountManagementPage() {
+  const student = useCurrentStudent();
+  const syncTick = usePortalDataSync();
+  const subAccess = getStudentSubscriptionAccess(student);
+
+  const [contractTemplate, setContractTemplate] = useState<AccountManagementContractTemplate>(
+    getCachedContractTemplate()
+  );
+  const [existingSig, setExistingSig] = useState<SignedAccountManagementContract | null>(null);
+  const [exnessTradingId, setExnessTradingId] = useState(student.exnessId || "");
+  const [typedSignature, setTypedSignature] = useState(student.fullName || "");
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [tradingPasswordInput, setTradingPasswordInput] = useState("");
+  const [submittingSig, setSubmittingSig] = useState(false);
+  const [submittingPass, setSubmittingPass] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [syncingDeposit, setSyncingDeposit] = useState(false);
+
+  useEffect(() => {
+    void fetchContractTemplateFromDb().then(setContractTemplate);
+    void fetchSignedContractsFromDb().then((list) => {
+      const found = list.find(
+        (c) => c.studentEmail.toLowerCase() === student.email.toLowerCase()
+      );
+      setExistingSig(found || null);
+      if (found?.exnessTradingAccountId) {
+        setExnessTradingId(found.exnessTradingAccountId);
+      }
+    });
+  }, [student.email, syncTick]);
+
+  const is500DepositConfirmed = subAccess.isAccountManagementDepositConfirmed;
+
+  async function handleCheckExness500Deposit() {
+    setSyncingDeposit(true);
+    setFeedback(null);
+    await syncExnessLiveWithSupabase();
+    setSyncingDeposit(false);
+    if (
+      student.accountManagementDepositVerified ||
+      student.depositAmount >= 500 ||
+      (student.accountBalanceUsd ?? 0) >= 500
+    ) {
+      setFeedback("Your $500+ USD Exness deposit is confirmed! You can now sign the Account Management Contract below.");
+    } else {
+      setFeedback(
+        `Current verified Exness deposit/equity is $${Math.max(
+          student.depositAmount || 0,
+          student.accountBalanceUsd || 0
+        )} USD. Fund your Exness account to at least $500 USD or ask Admin to confirm your $500 deposit.`
+      );
+    }
+  }
+
+  async function handleSignContract(e: FormEvent) {
+    e.preventDefault();
+    if (!agreedTerms || !typedSignature.trim() || !exnessTradingId.trim()) return;
+    setSubmittingSig(true);
+    const signed = await signAccountManagementContractInDb({
+      studentEmail: student.email,
+      studentName: student.fullName,
+      exnessTradingAccountId: exnessTradingId.trim(),
+      depositAmountUsd: Math.max(500, student.depositAmount || 500, student.accountBalanceUsd || 500),
+      digitalSignature: typedSignature.trim(),
+      contractVersionTitle: contractTemplate.title,
+      contractSnapshotText: contractTemplate.extractedText,
+    });
+    setExistingSig(signed);
+    setSubmittingSig(false);
+    setFeedback(
+      "Contract digitally signed & saved! Admin has been notified with your Exness Trading Account ID."
+    );
+  }
+
+  async function handleSendTradingPassword(e: FormEvent) {
+    e.preventDefault();
+    if (!existingSig || !tradingPasswordInput.trim()) return;
+    setSubmittingPass(true);
+    await submitTradingPasswordForContractInDb(existingSig.id, tradingPasswordInput.trim());
+    const list = await fetchSignedContractsFromDb();
+    const updated = list.find((c) => c.id === existingSig.id) || null;
+    setExistingSig(updated);
+    setSubmittingPass(false);
+    setTradingPasswordInput("");
+    setFeedback("Trading password securely transmitted to Pastor Mike for Account Management.");
+  }
+
+  return (
+    <>
+      <Header
+        eyebrow="EXNESS PAMM & ACCOUNT MANAGEMENT · $100 PERMANENT VIP"
+        title="$500+ Exness Account Management & Profit-Split Contract"
+        copy="Permanent VIP members with a confirmed $500+ USD Exness deposit can review the fixed Account Management Contract and append their Digital Signature."
+        action={
+          <Badge tone={existingSig ? "green" : is500DepositConfirmed ? "yellow" : "gray"}>
+            {existingSig
+              ? "✓ CONTRACT SIGNED"
+              : is500DepositConfirmed
+              ? "$500 DEPOSIT CONFIRMED"
+              : "AWAITING $500 DEPOSIT"}
+          </Badge>
+        }
+      />
+
+      {!subAccess.canAccessAccountManagement ? (
+        <SubscriptionGateNotice
+          featureTitle="Account Management Locked · $100 Permanent VIP Access Required"
+          featureDescription="Account Management by Pastor Mike is exclusively available to $100 One-Time Permanent VIP members who deposit at least $500 USD into their linked Exness trading account."
+          defaultPlan="permanent_100"
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* Step 1: $500 Exness Deposit Verification Banner */}
+          <Card className="p-6 border border-white/10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold">
+                    STEP 1 OF 2 · MINIMUM $500 USD EXNESS TRADING CAPITAL
+                  </span>
+                  <Badge tone={is500DepositConfirmed ? "green" : "red"}>
+                    {is500DepositConfirmed ? "✓ $500+ VERIFIED" : "MINIMUM $500 REQUIRED"}
+                  </Badge>
+                </div>
+                <h2 className="text-lg font-extrabold text-white">
+                  {is500DepositConfirmed
+                    ? "Your $500+ Exness Capital Requirement is Confirmed"
+                    : "Fund Your Exness Account with $500+ USD to Unlock the Digital Contract"}
+                </h2>
+                <p className="text-xs text-[#9aa4b5] max-w-2xl">
+                  To qualify for hands-free Account Management and Profit Split ({contractTemplate.profitSplitLabel}), your linked Exness account must hold at least <strong>$500 USD</strong> (verified via Exness Partner API sync or Admin confirmation).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  disabled={syncingDeposit}
+                  onClick={() => void handleCheckExness500Deposit()}
+                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw size={13} className={syncingDeposit ? "animate-spin" : ""} />
+                  {syncingDeposit ? "Checking Exness..." : "Verify $500 Exness Deposit"}
+                </button>
+              </div>
+            </div>
+          </Card>
+
+          {feedback && (
+            <div className="p-4 rounded-2xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-xs text-[#ffb600] flex items-center gap-2.5">
+              <CheckCircle2 size={16} className="shrink-0" />
+              <span>{feedback}</span>
+            </div>
+          )}
+
+          {/* Step 2: Fixed Non-Negotiable Account Management Contract & Digital Signature */}
+          <Card className="p-6 space-y-5 border border-[#ffb600]/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold block">
+                  STEP 2 OF 2 · FIXED NON-NEGOTIABLE AGREEMENT ({contractTemplate.uploadedFileName})
+                </span>
+                <h2 className="text-lg font-extrabold text-white mt-0.5">
+                  {contractTemplate.title}
+                </h2>
+              </div>
+              <Badge tone="yellow">{contractTemplate.profitSplitLabel}</Badge>
+            </div>
+
+            {/* Extracted Fixed Contract Document Viewer */}
+            <div className="p-5 rounded-2xl bg-[#090c12] border border-white/15 max-h-[340px] overflow-y-auto font-mono text-xs text-[#d6deeb] whitespace-pre-wrap leading-relaxed select-text">
+              {contractTemplate.extractedText}
+            </div>
+
+            {existingSig ? (
+              <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/35 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold block">
+                      ✓ DIGITALLY SIGNED &amp; LOCKED IN DATABASE
+                    </span>
+                    <h3 className="text-base font-extrabold text-white mt-0.5">
+                      Signed by {existingSig.digitalSignature} on{" "}
+                      {new Date(existingSig.signedAt).toLocaleString()}
+                    </h3>
+                  </div>
+                  <Badge tone="green">
+                    EXNESS ID: {existingSig.exnessTradingAccountId}
+                  </Badge>
+                </div>
+
+                <p className="text-xs text-[#cfd7e4]">
+                  Your signed Account Management Contract and Exness Trading Account ID (
+                  <strong className="text-[#ffb600] font-mono">
+                    {existingSig.exnessTradingAccountId}
+                  </strong>
+                  ) are now visible to Pastor Mike in the Admin Console.
+                </p>
+
+                {/* If Admin requested Trading Password or Student wants to provide it */}
+                {(existingSig.passwordRequestedByAdmin || !existingSig.tradingPasswordSubmitted) && (
+                  <form
+                    onSubmit={handleSendTradingPassword}
+                    className="p-4 rounded-xl bg-[#0d111a] border border-[#ffb600]/40 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-mono font-bold text-[#ffb600] uppercase">
+                        {existingSig.passwordRequestedByAdmin
+                          ? "🔔 ADMIN REQUESTED YOUR EXNESS TRADING PASSWORD TO START MANAGEMENT"
+                          : "SUBMIT EXNESS MT4/MT5 TRADING PASSWORD FOR MANAGEMENT"}
+                      </span>
+                      <Badge tone={existingSig.tradingPasswordSubmitted ? "green" : "yellow"}>
+                        {existingSig.tradingPasswordSubmitted ? "SUBMITTED" : "AWAITING PASSWORD"}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <input
+                        type="password"
+                        required
+                        value={tradingPasswordInput}
+                        onChange={(e) => setTradingPasswordInput(e.target.value)}
+                        placeholder={`Enter Trading Password for Exness Account #${existingSig.exnessTradingAccountId}...`}
+                        className="flex-1 h-11 bg-[#151a26] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+                      />
+                      <Button type="submit" disabled={submittingPass}>
+                        {submittingPass ? "Sending..." : "Submit Trading Password to Admin"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ) : !is500DepositConfirmed ? (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-center gap-3">
+                <Lock size={18} className="text-[#ffb600] shrink-0" />
+                <span>
+                  Digital Signature is locked until your <strong>$500 USD Exness deposit</strong> is confirmed. Once your $500 deposit is verified by Exness Partner Sync or Admin, the signature box below unlocks immediately.
+                </span>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSignContract}
+                className="p-5 rounded-2xl bg-[#121722] border border-white/10 space-y-4"
+              >
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <FileSignature size={17} className="text-[#ffb600]" />
+                  Append Your Digital Signature (Fixed Non-Negotiable Terms)
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-1">
+                      Your Exness Trading Account ID ($500+ Funded) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={exnessTradingId}
+                      onChange={(e) => setExnessTradingId(e.target.value)}
+                      placeholder="e.g. 104859321"
+                      className="w-full h-11 bg-[#0b0e15] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-1">
+                      Type Full Legal Name as Digital Signature *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={typedSignature}
+                      onChange={(e) => setTypedSignature(e.target.value)}
+                      placeholder="Type your full legal name..."
+                      className="w-full h-11 bg-[#0b0e15] border border-[#ffb600]/50 rounded-xl px-3.5 text-sm font-serif italic font-bold text-[#ffb600]"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 text-xs text-[#cfd7e4] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={agreedTerms}
+                    onChange={(e) => setAgreedTerms(e.target.checked)}
+                    className="accent-[#ffb600] mt-0.5 w-4 h-4"
+                  />
+                  <span>
+                    I have read and agree to the fixed, non-negotiable{" "}
+                    <strong>{contractTemplate.title}</strong> ({contractTemplate.profitSplitLabel}), confirm that my Exness account holds at least $500 USD, and authorize Pastor Mike to request my trading password to manage the account and split profits.
+                  </span>
+                </label>
+
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={submittingSig || !agreedTerms}>
+                    <FileSignature size={15} />{" "}
+                    {submittingSig
+                      ? "Recording Digital Signature..."
+                      : "Sign Contract & Send Exness ID to Admin"}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </Card>
+        </div>
       )}
     </>
   );
@@ -6737,87 +7742,913 @@ export function SignalFormPage() {
 }
 
 export function PaymentsPage() {
-  const [active, setActive] = useState<Record<string, boolean>>({});
-  const roster = getStoredRoster();
+  const syncTick = usePortalDataSync();
+  const [roster, setRoster] = useState<ExnessStudent[]>(getStoredRoster());
+  const [moolreConfig, setMoolreConfig] = useState<MoolrePaymentConfig>(getMoolreConfig());
+  const [payments, setPayments] = useState<MoolrePaymentRecord[]>(getCachedMoolrePayments());
+  const [sessions1on1, setSessions1on1] = useState<MentorshipSession1on1Item[]>([]);
+  const [contractTemplate, setContractTemplate] = useState<AccountManagementContractTemplate>(
+    getCachedContractTemplate()
+  );
+  const [signedContracts, setSignedContracts] = useState<SignedAccountManagementContract[]>([]);
+  const [merchClaims, setMerchClaims] = useState<MerchClaimItem[]>([]);
+  const [activeTab, setActiveTab] = useState<
+    "TIERS" | "MOOLRE" | "MENTORSHIP_1ON1" | "CONTRACTS" | "MERCH_20"
+  >("TIERS");
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+
+  // 1-on-1 Session Scheduler Form State
+  const [selectedVipEmail, setSelectedVipEmail] = useState("");
+  const [topic1on1, setTopic1on1] = useState("Private 1-on-1 London/NY Institutional Execution");
+  const [pair1on1, setPair1on1] = useState("XAU / USD · EUR / USD");
+  const [date1on1, setDate1on1] = useState(
+    new Date(Date.now() + 86400000).toISOString().slice(0, 16)
+  );
+  const [duration1on1, setDuration1on1] = useState("60");
+  const [notes1on1, setNotes1on1] = useState(
+    "Bring your trade journal and linked Exness account for live chart breakdown."
+  );
+
+  useEffect(() => {
+    setRoster(getStoredRoster());
+    void fetchMoolrePaymentsFromDb().then(setPayments);
+    void fetch1on1SessionsFromDb().then(setSessions1on1);
+    void fetchContractTemplateFromDb().then(setContractTemplate);
+    void fetchSignedContractsFromDb().then(setSignedContracts);
+    void fetchMerchClaimsFromDb().then(setMerchClaims);
+  }, [syncTick]);
+
+  const vip100Students = roster.filter((s) => s.subscriptionTier === "permanent_100");
+  const monthly20Students = roster.filter((s) => s.subscriptionTier === "monthly_20");
+  const totalRevenueUsd = payments.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
+
+  function showNotice(msg: string) {
+    setStatusBanner(msg);
+    setTimeout(() => setStatusBanner(null), 5000);
+  }
+
+  function handleSaveMoolreSettings(e: FormEvent) {
+    e.preventDefault();
+    saveMoolreConfig(moolreConfig);
+    showNotice("Moolre Payment Gateway credentials & pricing saved!");
+  }
+
+  async function handleSchedule1on1(e: FormEvent) {
+    e.preventDefault();
+    const targetStudent =
+      roster.find((s) => s.email === selectedVipEmail) || vip100Students[0] || roster[0];
+    if (!targetStudent) return;
+    await schedule1on1SessionInDb({
+      studentEmail: targetStudent.email,
+      studentName: targetStudent.fullName,
+      topic: topic1on1.trim(),
+      focusPair: pair1on1.trim(),
+      scheduledAt: new Date(date1on1).toISOString(),
+      durationMinutes: Number(duration1on1) || 60,
+      meetingUrl: "/sessions",
+      status: "scheduled",
+      notes: notes1on1.trim(),
+    });
+    const updated = await fetch1on1SessionsFromDb();
+    setSessions1on1(updated);
+    showNotice(`Scheduled 1-on-1 Live Mentorship session for ${targetStudent.fullName}!`);
+  }
+
+  async function handleUploadContractFile(file: File | null) {
+    if (!file) return;
+    const text = await extractTextFromUploadedContractFile(file);
+    const nextTemplate: AccountManagementContractTemplate = {
+      ...contractTemplate,
+      uploadedFileName: file.name,
+      extractedText: text,
+      updatedAt: new Date().toISOString(),
+    };
+    const saved = await saveContractTemplateInDb(nextTemplate);
+    setContractTemplate(saved);
+    showNotice(
+      `Uploaded "${file.name}" and extracted fixed contract terms (${text.length} chars) for student digital signature!`
+    );
+  }
+
+  async function handleSaveContractEdits(e: FormEvent) {
+    e.preventDefault();
+    const saved = await saveContractTemplateInDb(contractTemplate);
+    setContractTemplate(saved);
+    showNotice("Fixed Account Management Contract updated and published to student portals!");
+  }
 
   return (
     <>
       <Header
-        eyebrow="MONETIZATION"
-        title="Payments & tiers"
-        copy="Manage mentorship access and payment status."
-        action={
-          <Button>
-            <Icon name="plus" /> Record payment
-          </Button>
-        }
+        eyebrow="MOOLRE PAYMENT GATEWAY · VIP MENTORSHIP · ACCOUNT MANAGEMENT · MERCH"
+        title="Monetization, Moolre API, Contracts & Merch Claims"
+        copy="Configure Moolre Mobile Money & Card checkout ($20/month & $100 Permanent VIP), schedule 1-on-1 sessions, upload the Account Management contract, and manage First 20 Registrants merch claims."
       />
-      <div className="metrics-grid">
-        <Metric label="Mentorship students" value="48" change="+6 this month" icon="users" />
-        <Metric label="Monthly revenue" value="$6,840" change="+14.2%" icon="trend" />
-        <Metric label="Pending payments" value="$620" change="5 students" icon="clock" />
+
+      {statusBanner && (
+        <div className="mb-5 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-200 flex items-center gap-2.5">
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+          <span>{statusBanner}</span>
+        </div>
+      )}
+
+      <div className="metrics-grid four">
+        <Metric
+          label="Moolre Revenue"
+          value={`$${totalRevenueUsd.toLocaleString()}`}
+          change={`${payments.length} completed checkouts`}
+          icon="wallet"
+        />
+        <Metric
+          label="$20/Month Subscribers"
+          value={`${monthly20Students.length}`}
+          change="Full courses + Live + Insights"
+          icon="users"
+        />
+        <Metric
+          label="$100 Permanent VIPs"
+          value={`${vip100Students.length}`}
+          change={`${signedContracts.length} signed contracts`}
+          icon="shield"
+        />
+        <Metric
+          label="First 20 Merch Claims"
+          value={`${merchClaims.length} / 20`}
+          change={`${Math.max(0, 20 - merchClaims.length)} spots left`}
+          icon="check"
+        />
       </div>
-      <Card className="pricing">
-        <span>
-          <p className="p-eyebrow">ONE-ON-ONE MENTORSHIP</p>
-          <h2>
-            $150 <small>/ month</small>
-          </h2>
-          <p>Current default price for private mentorship.</p>
-        </span>
-        <Button variant="secondary">Edit pricing</Button>
-      </Card>
-      <Card className="data-card">
-        <DataTools />
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Tier</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Next billing</th>
-                <th>Access</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roster.map((s, i) => {
-                const on = active[s.fullName] ?? i < 2;
-                return (
-                  <tr key={s.id}>
-                    <td>
-                      <div className="student-cell">
-                        <StudentAvatarBadge avatarUrl={s.avatarUrl} name={s.fullName} />
-                        <span>
-                          <b>{s.fullName}</b>
-                          <small>{s.email}</small>
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <Badge tone={on ? "yellow" : "gray"}>{on ? "MENTORSHIP" : "FREE MONTH"}</Badge>
-                    </td>
-                    <td>{on ? "$150" : "$0"}</td>
-                    <td>
-                      <Badge tone={i === 1 ? "red" : "green"}>{i === 1 ? "OVERDUE" : "PAID"}</Badge>
-                    </td>
-                    <td>{on ? "01 Nov 2026" : "—"}</td>
-                    <td>
-                      <button
-                        className={`toggle ${on ? "on" : ""}`}
-                        onClick={() => setActive({ ...active, [s.fullName]: !on })}
-                      >
-                        <i />
-                      </button>
+
+      {/* Admin Sub-Navigation Tabs */}
+      <div className="tabs mb-6">
+        {(
+          [
+            ["TIERS", `Student Tiers & $500 Deposit (${roster.length})`],
+            ["MOOLRE", "Moolre API Gateway Setup"],
+            ["MENTORSHIP_1ON1", `1-on-1 VIP Scheduler (${sessions1on1.length})`],
+            ["CONTRACTS", `Account Management Contracts (${signedContracts.length})`],
+            ["MERCH_20", `First 20 Merch Giveaway (${merchClaims.length}/20)`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={activeTab === key ? "active bg-[#ffb600] text-black font-bold" : ""}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: STUDENT TIERS & $500 ACCOUNT MANAGEMENT DEPOSIT VERIFICATION */}
+      {activeTab === "TIERS" && (
+        <div className="space-y-6">
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                  3-TIER ACCESS CONTROL · 1-MONTH FREE TRIAL → $20/MO OR $100 PERMANENT VIP
+                </span>
+                <h3 className="text-lg font-bold text-white mt-0.5">
+                  Student Subscription Tiers &amp; $500 Account Management Verification
+                </h3>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Current Tier</th>
+                    <th>Exness Account &amp; Equity</th>
+                    <th>$500 Mgmt Deposit</th>
+                    <th>Change Tier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roster.map((s) => {
+                    const access = getStudentSubscriptionAccess(s);
+                    const has500 = access.isAccountManagementDepositConfirmed;
+                    return (
+                      <tr key={s.id}>
+                        <td>
+                          <div className="student-cell">
+                            <StudentAvatarBadge avatarUrl={s.avatarUrl} name={s.fullName} />
+                            <span>
+                              <b>{s.fullName}</b>
+                              <small>{s.email}</small>
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <Badge
+                            tone={
+                              access.effectiveTier === "permanent_100" ||
+                              access.effectiveTier === "monthly_20"
+                                ? "green"
+                                : access.effectiveTier === "free_trial"
+                                ? "yellow"
+                                : "red"
+                            }
+                          >
+                            {access.tierLabel}
+                          </Badge>
+                        </td>
+                        <td className="font-mono text-xs">
+                          <div>ID: {s.exnessId || "Unlinked"}</div>
+                          <small className="text-[#9aa4b5]">
+                            Deposit: ${s.depositAmount || 0} · Equity: ${s.accountBalanceUsd || 0}
+                          </small>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateStudentTierInStore(s.email, {
+                                accountManagementDepositVerified: !has500,
+                                depositAmount: !has500
+                                  ? Math.max(500, s.depositAmount || 500)
+                                  : 50,
+                              });
+                              setRoster(getStoredRoster());
+                              showNotice(
+                                `${!has500 ? "Confirmed" : "Revoked"} $500 Exness Account Management deposit for ${s.fullName}`
+                              );
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border cursor-pointer ${
+                              has500
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                : "bg-white/5 text-[#9aa4b5] border-white/10 hover:text-white"
+                            }`}
+                          >
+                            {has500 ? "✓ $500 Confirmed" : "Confirm $500 Deposit"}
+                          </button>
+                        </td>
+                        <td>
+                          <select
+                            value={s.subscriptionTier || "free_trial"}
+                            onChange={(e) => {
+                              const nextTier = e.target.value as SubscriptionTier;
+                              const now = new Date();
+                              updateStudentTierInStore(s.email, {
+                                subscriptionTier: nextTier,
+                                trialEndsAt:
+                                  nextTier === "free_trial"
+                                    ? new Date(now.getTime() + 30 * 86400000).toISOString()
+                                    : nextTier === "expired_free"
+                                    ? new Date(now.getTime() - 86400000).toISOString()
+                                    : s.trialEndsAt,
+                                subscriptionEndsAt:
+                                  nextTier === "monthly_20"
+                                    ? new Date(now.getTime() + 30 * 86400000).toISOString()
+                                    : nextTier === "permanent_100"
+                                    ? "2099-12-31T23:59:59.000Z"
+                                    : s.subscriptionEndsAt,
+                              });
+                              setRoster(getStoredRoster());
+                              showNotice(`Updated ${s.fullName} to ${nextTier}`);
+                            }}
+                            className="bg-[#141821] border border-white/15 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                          >
+                            <option value="free_trial">1-Month Free Trial</option>
+                            <option value="expired_free">Expired Free (Signals + Beg/Int Only)</option>
+                            <option value="monthly_20">$20 / Month Plan</option>
+                            <option value="permanent_100">$100 Permanent VIP</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Moolre Payment Ledger */}
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                MOOLRE TRANSACTIONS · public.moolre_payments
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Recent Moolre Checkouts ({payments.length})
+              </h3>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Student</th>
+                    <th>Plan</th>
+                    <th>Amount</th>
+                    <th>Phone / Network</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-xs text-[#8c95a6]">
+                        No Moolre payments recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    payments.map((p) => (
+                      <tr key={p.id}>
+                        <td className="font-mono text-xs text-[#ffb600]">{p.externalRef}</td>
+                        <td>
+                          <b>{p.studentName}</b>
+                          <small className="block text-[10px] text-[#8c95a6]">
+                            {p.studentEmail}
+                          </small>
+                        </td>
+                        <td>
+                          <Badge tone={p.plan === "permanent_100" ? "green" : "yellow"}>
+                            {p.plan === "permanent_100" ? "$100 PERMANENT VIP" : "$20 / MONTH"}
+                          </Badge>
+                        </td>
+                        <td className="font-mono font-bold text-white">
+                          ${p.amountUsd} ({p.currency} {p.amountLocal})
+                        </td>
+                        <td className="font-mono text-xs">
+                          {p.network} · {p.phone}
+                        </td>
+                        <td>
+                          <Badge tone="green">{p.status.toUpperCase()}</Badge>
+                        </td>
+                        <td className="text-xs text-[#9aa4b5]">
+                          {new Date(p.createdAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 2: MOOLRE API CREDENTIALS & PRICING */}
+      {activeTab === "MOOLRE" && (
+        <Card className="p-6 max-w-3xl space-y-5">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold">
+              MOOLRE PAYMENT GATEWAY (M-O-O-L-R-E) · API CONFIGURATION
+            </span>
+            <h2 className="text-lg font-extrabold text-white mt-1">
+              Moolre Merchant Credentials &amp; Plan Pricing
+            </h2>
+            <p className="text-xs text-[#9aa4b5] mt-1">
+              Connect your Moolre API User (`X-API-USER`), Public Key (`X-API-PUBKEY`), and Merchant Account Number to process live Mobile Money (MTN, Telecel, AirtelTigo) and Card payments.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveMoolreSettings} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Moolre API Username (X-API-USER)
+                </label>
+                <input
+                  type="text"
+                  value={moolreConfig.apiUser}
+                  onChange={(e) =>
+                    setMoolreConfig({ ...moolreConfig, apiUser: e.target.value })
+                  }
+                  placeholder="Enter your Moolre X-API-USER..."
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Moolre Merchant Account Number
+                </label>
+                <input
+                  type="text"
+                  value={moolreConfig.accountNumber}
+                  onChange={(e) =>
+                    setMoolreConfig({ ...moolreConfig, accountNumber: e.target.value })
+                  }
+                  placeholder="Enter your Moolre Account Number..."
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-white mb-1">
+                Moolre Public API Key (X-API-PUBKEY)
+              </label>
+              <input
+                type="password"
+                value={moolreConfig.apiPubKey}
+                onChange={(e) =>
+                  setMoolreConfig({ ...moolreConfig, apiPubKey: e.target.value })
+                }
+                placeholder="Paste your Moolre X-API-PUBKEY..."
+                className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">Currency</label>
+                <select
+                  value={moolreConfig.currency}
+                  onChange={(e) =>
+                    setMoolreConfig({
+                      ...moolreConfig,
+                      currency: e.target.value as "GHS" | "USD",
+                    })
+                  }
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                >
+                  <option value="GHS">GHS (₵)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  USD to GHS Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={moolreConfig.usdToGhsRate}
+                  onChange={(e) =>
+                    setMoolreConfig({
+                      ...moolreConfig,
+                      usdToGhsRate: Number(e.target.value) || 15.5,
+                    })
+                  }
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Monthly Plan ($ USD)
+                </label>
+                <input
+                  type="number"
+                  value={moolreConfig.monthlyPlanUsd}
+                  onChange={(e) =>
+                    setMoolreConfig({
+                      ...moolreConfig,
+                      monthlyPlanUsd: Number(e.target.value) || 20,
+                    })
+                  }
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Permanent VIP ($ USD)
+                </label>
+                <input
+                  type="number"
+                  value={moolreConfig.permanentPlanUsd}
+                  onChange={(e) =>
+                    setMoolreConfig({
+                      ...moolreConfig,
+                      permanentPlanUsd: Number(e.target.value) || 100,
+                    })
+                  }
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit">Save Moolre Gateway Configuration</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* TAB 3: 1-ON-1 VIP LIVE MENTORSHIP SCHEDULER */}
+      {activeTab === "MENTORSHIP_1ON1" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <Card className="lg:col-span-5 p-6 space-y-4">
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold">
+                SCHEDULE 1-ON-1 SESSION · $100 PERMANENT VIPs
+              </span>
+              <h3 className="text-base font-extrabold text-white mt-1">
+                Book Private 1-on-1 Live Trading Session
+              </h3>
+            </div>
+            <form onSubmit={handleSchedule1on1} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Select Student ($100 Permanent VIPs shown first)
+                </label>
+                <select
+                  value={selectedVipEmail}
+                  onChange={(e) => setSelectedVipEmail(e.target.value)}
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs text-white"
+                >
+                  {roster.map((s) => (
+                    <option key={s.email} value={s.email}>
+                      {s.fullName} ({s.email}) —{" "}
+                      {s.subscriptionTier === "permanent_100" ? "$100 VIP" : s.subscriptionTier || "Free Trial"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  1-on-1 Session Topic
+                </label>
+                <input
+                  value={topic1on1}
+                  onChange={(e) => setTopic1on1(e.target.value)}
+                  required
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1">Focus Pair</label>
+                  <input
+                    value={pair1on1}
+                    onChange={(e) => setPair1on1(e.target.value)}
+                    className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1">
+                    Duration (Min)
+                  </label>
+                  <input
+                    type="number"
+                    value={duration1on1}
+                    onChange={(e) => setDuration1on1(e.target.value)}
+                    className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Date &amp; Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={date1on1}
+                  onChange={(e) => setDate1on1(e.target.value)}
+                  required
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs font-mono text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Preparation Notes for Student
+                </label>
+                <textarea
+                  rows={3}
+                  value={notes1on1}
+                  onChange={(e) => setNotes1on1(e.target.value)}
+                  className="w-full bg-[#141821] border border-white/15 rounded-xl p-3 text-xs text-white"
+                />
+              </div>
+              <Button type="submit">Schedule 1-on-1 Session &amp; Notify Student</Button>
+            </form>
+          </Card>
+
+          <Card className="lg:col-span-7 data-card">
+            <div className="p-5 border-b border-white/10">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                SCHEDULED 1-ON-1 MENTORSHIP SESSIONS ({sessions1on1.length})
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Private VIP Coaching Calendar
+              </h3>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Topic &amp; Pair</th>
+                    <th>Date &amp; Time</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions1on1.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-xs text-[#8c95a6]">
+                        No 1-on-1 sessions scheduled yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    sessions1on1.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <b>{item.studentName}</b>
+                          <small className="block text-[10px] text-[#8c95a6]">
+                            {item.studentEmail}
+                          </small>
+                        </td>
+                        <td>
+                          <b>{item.topic}</b>
+                          <small className="block text-[10px] font-mono text-[#ffb600]">
+                            {item.focusPair} ({item.durationMinutes}m)
+                          </small>
+                        </td>
+                        <td className="font-mono text-xs">
+                          {new Date(item.scheduledAt).toLocaleString()}
+                        </td>
+                        <td>
+                          <Badge tone={item.status === "live" ? "green" : "yellow"}>
+                            {item.status.toUpperCase()}
+                          </Badge>
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void update1on1SessionStatusInDb(
+                                  item.id,
+                                  item.status === "live" ? "completed" : "live"
+                                ).then(() => fetch1on1SessionsFromDb().then(setSessions1on1))
+                              }
+                              className="px-2.5 py-1 rounded bg-[#ffb600] text-black text-[10px] font-bold cursor-pointer"
+                            >
+                              {item.status === "live" ? "Complete" : "Set Live"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void delete1on1SessionFromDb(item.id).then(() =>
+                                  fetch1on1SessionsFromDb().then(setSessions1on1)
+                                )
+                              }
+                              className="px-2.5 py-1 rounded bg-red-500/20 text-red-300 text-[10px] font-bold cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 4: ACCOUNT MANAGEMENT CONTRACT UPLOAD & SIGNED CONTRACTS TABLE */}
+      {activeTab === "CONTRACTS" && (
+        <div className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold">
+                  UPLOAD CONTRACT DOCUMENT · AUTO-EXTRACTS FIXED NON-NEGOTIABLE TEXT
+                </span>
+                <h3 className="text-lg font-extrabold text-white mt-0.5">
+                  Account Management Contract Template ({contractTemplate.uploadedFileName})
+                </h3>
+              </div>
+              <label className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shrink-0">
+                <Upload size={14} /> Upload Contract Document (.TXT / .PDF / .DOC)
+                <input
+                  type="file"
+                  accept=".txt,.md,.pdf,.doc,.docx"
+                  className="hidden"
+                  onChange={(e) => void handleUploadContractFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+
+            <form onSubmit={handleSaveContractEdits} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1">
+                    Contract Title
+                  </label>
+                  <input
+                    value={contractTemplate.title}
+                    onChange={(e) =>
+                      setContractTemplate({ ...contractTemplate, title: e.target.value })
+                    }
+                    className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1">
+                    Profit Split &amp; Minimum Capital Label
+                  </label>
+                  <input
+                    value={contractTemplate.profitSplitLabel}
+                    onChange={(e) =>
+                      setContractTemplate({
+                        ...contractTemplate,
+                        profitSplitLabel: e.target.value,
+                      })
+                    }
+                    className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3 text-xs text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Extracted Fixed Contract Text (Read-Only for Students · Digital Signature Only)
+                </label>
+                <textarea
+                  rows={10}
+                  value={contractTemplate.extractedText}
+                  onChange={(e) =>
+                    setContractTemplate({
+                      ...contractTemplate,
+                      extractedText: e.target.value,
+                    })
+                  }
+                  className="w-full bg-[#090c12] border border-white/15 rounded-xl p-4 font-mono text-xs text-[#d6deeb]"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit">Publish Fixed Contract to Student Portals</Button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Digitally Signed Contracts & Exness Trading Account IDs */}
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                SIGNED ACCOUNT MANAGEMENT CONTRACTS · EXNESS ACCOUNT ID &amp; PASSWORD REQUEST
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Students Who Digitally Signed ({signedContracts.length})
+              </h3>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Digital Signature</th>
+                    <th>Exness Trading Account ID</th>
+                    <th>Verified Deposit</th>
+                    <th>Trading Password Status</th>
+                    <th>Admin Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {signedContracts.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-xs text-[#8c95a6]">
+                        No signed Account Management contracts yet. Once a $100 VIP student with a confirmed $500 deposit signs the contract, their Exness Trading Account ID appears here.
+                      </td>
+                    </tr>
+                  ) : (
+                    signedContracts.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <b>{c.studentName}</b>
+                          <small className="block text-[10px] text-[#8c95a6]">
+                            {c.studentEmail}
+                          </small>
+                        </td>
+                        <td>
+                          <span className="font-serif italic text-[#ffb600] font-bold">
+                            {c.digitalSignature}
+                          </span>
+                          <small className="block text-[10px] text-[#8c95a6]">
+                            {new Date(c.signedAt).toLocaleString()}
+                          </small>
+                        </td>
+                        <td>
+                          <span className="px-2.5 py-1 rounded-lg bg-[#ffb600]/15 border border-[#ffb600]/40 font-mono text-xs font-bold text-[#ffb600]">
+                            #{c.exnessTradingAccountId}
+                          </span>
+                        </td>
+                        <td className="font-mono font-bold text-emerald-400">
+                          ${c.depositAmountUsd.toLocaleString()} USD
+                        </td>
+                        <td>
+                          {c.tradingPasswordSubmitted ? (
+                            <span className="font-mono text-xs text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                              PW: {c.tradingPasswordValue}
+                            </span>
+                          ) : c.passwordRequestedByAdmin ? (
+                            <Badge tone="yellow">REQUEST SENT TO STUDENT</Badge>
+                          ) : (
+                            <Badge tone="gray">NOT REQUESTED YET</Badge>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void requestTradingPasswordFromStudentInDb(c).then(async () => {
+                                const list = await fetchSignedContractsFromDb();
+                                setSignedContracts(list);
+                                showNotice(
+                                  `Sent Trading Password request alert to ${c.studentName} for Exness Account #${c.exnessTradingAccountId}!`
+                                );
+                              })
+                            }
+                            className="px-3 py-1.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs cursor-pointer"
+                          >
+                            Request Trading Password
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 5: FIRST 20 REGISTRANTS MERCH GIVEAWAY CLAIMS */}
+      {activeTab === "MERCH_20" && (
+        <Card className="data-card">
+          <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                FIRST 20 REGISTRANTS · CANDLESTICKS &amp; EXNESS MERCH GIVEAWAY (T-SHIRT, TOTE BAG, CAP)
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Merch Delivery Claims ({merchClaims.length} / 20 Claimed)
+              </h3>
+            </div>
+            <Badge tone="yellow">{Math.max(0, 20 - merchClaims.length)} SPOTS REMAINING</Badge>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Spot #</th>
+                  <th>Full Name &amp; Email</th>
+                  <th>Contact Number</th>
+                  <th>Delivery Location</th>
+                  <th>Preferred Delivery Time</th>
+                  <th>Merch Pack</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {merchClaims.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-xs text-[#8c95a6]">
+                      No merch giveaway claims submitted yet. The Post-Registration Popup Modal automatically appears for the first 20 registrants right after onboarding.
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                ) : (
+                  merchClaims.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <Badge tone="yellow">#{m.spotNumber} OF 20</Badge>
+                      </td>
+                      <td>
+                        <b>{m.fullName}</b>
+                        <small className="block text-[10px] text-[#8c95a6]">
+                          {m.studentEmail}
+                        </small>
+                      </td>
+                      <td className="font-mono text-xs text-white">{m.phone}</td>
+                      <td className="text-xs text-[#cfd7e4]">{m.deliveryLocation}</td>
+                      <td className="text-xs text-[#ffb600] font-mono">
+                        {m.preferredDeliveryTime}
+                      </td>
+                      <td className="text-xs text-[#9aa4b5]">{m.merchItems}</td>
+                      <td>
+                        <select
+                          value={m.status}
+                          onChange={(e) =>
+                            void updateMerchClaimStatusInDb(
+                              m.id,
+                              e.target.value as "pending" | "dispatched" | "delivered"
+                            ).then(() => fetchMerchClaimsFromDb().then(setMerchClaims))
+                          }
+                          className="bg-[#141821] border border-white/15 rounded-lg px-2 py-1 text-xs text-white"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="dispatched">Dispatched</option>
+                          <option value="delivered">Delivered</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </>
   );
 }

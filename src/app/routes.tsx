@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router";
 import HomePage from "../App";
 import { TermsPage, PrivacyPage } from "./LegalPages";
 import {
+  AccountManagementPage,
   AdminDashboardPage,
   CourseDetailPage,
   CoursesPage,
@@ -9,6 +10,7 @@ import {
   LessonPage,
   LiveRoomPage,
   LoginPage,
+  Mentorship1on1Page,
   NotFoundPage,
   OnboardingPage,
   PaymentsPage,
@@ -72,6 +74,8 @@ export const router = createBrowserRouter([
       { path: "/trades", Component: TradesPage },
       { path: "/signals", Component: SignalFeedPage },
       { path: "/signals/:signalId", Component: SignalDetailPage },
+      { path: "/mentorship", Component: Mentorship1on1Page },
+      { path: "/account-management", Component: AccountManagementPage },
       { path: "/admin", Component: AdminDashboardPage },
       { path: "/admin/students", Component: StudentRosterPage },
       { path: "/admin/courses", Component: AdminCoursesPage },
