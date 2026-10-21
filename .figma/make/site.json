@@ -1,6 +1,9 @@
 {
   "title": "Candlestick Academy",
   "description": "Candlestick Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.",
+  "icons": {
+    "icon": "/assets/aistudio/Favicon_bd6c3d10.png"
+  },
   "robots": {
     "index": false
   },
