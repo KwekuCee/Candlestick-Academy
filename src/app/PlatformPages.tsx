@@ -116,6 +116,7 @@ import {
   Mail,
   MessageSquare,
   MonitorPlay,
+  Moon,
   Plus,
   Radio,
   RefreshCw,
@@ -125,6 +126,7 @@ import {
   ShieldCheck,
   Sliders,
   Sparkles,
+  Sun,
   Target,
   TrendingUp,
   Unlock,
@@ -133,6 +135,7 @@ import {
   Video as VideoIcon,
   Zap,
 } from "lucide-react";
+import { MobileCandlestickSplash, PWAInstallButton } from "./PWAInstallPrompt";
 
 type IconName =
   | "admin"
@@ -576,8 +579,26 @@ const adminNav = [
   ["Live Broadcast Studio", "/admin/sessions", "video"],
   ["Post a signal", "/admin/signals/new", "signal"],
   ["Mentor Q&A Inbox", "/admin/messages", "bell"],
-  ["Verification & SQL", "/admin/verification", "shield"],
+  ["Exness Partner Sync", "/admin/verification", "shield"],
   ["Payments & tiers", "/admin/payments", "trades"],
+] as const;
+
+const mobileStudentTabs = [
+  ["Overview", "/dashboard", "home"],
+  ["Courses", "/courses", "book"],
+  ["Live", "/sessions", "video"],
+  ["Signals", "/signals", "signal"],
+  ["Trades", "/trades", "trades"],
+  ["Progress", "/progress", "chart"],
+] as const;
+
+const mobileAdminTabs = [
+  ["Overview", "/admin", "admin"],
+  ["Students", "/admin/students", "users"],
+  ["Courses", "/admin/courses", "book"],
+  ["Live", "/admin/sessions", "video"],
+  ["Signals", "/admin/signals/new", "signal"],
+  ["Sync", "/admin/verification", "shield"],
 ] as const;
 
 export function PortalLayout() {
@@ -588,6 +609,47 @@ export function PortalLayout() {
   const student = useCurrentStudent();
   const syncTick = usePortalDataSync();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Dashboard Theme state (Light / Dark toggle for Dashboards only; Home page stays untouched)
+  const [portalTheme, setPortalTheme] = useState<"dark" | "light">(() => {
+    try {
+      const saved = localStorage.getItem("candlesticks_portal_theme");
+      return saved === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  function togglePortalTheme() {
+    setPortalTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem("candlesticks_portal_theme", next);
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
+  // 3-Second Alternating 3-Candlesticks Mobile App Loading Screen
+  const [showMobileSplash, setShowMobileSplash] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const isMobileViewport =
+      window.innerWidth <= 860 ||
+      /android|iphone|ipad|ipod|mobile/i.test(window.navigator.userAgent);
+    if (!isMobileViewport) return false;
+    try {
+      const seen = sessionStorage.getItem("candlesticks_mobile_splash_seen");
+      if (!seen) {
+        sessionStorage.setItem("candlesticks_mobile_splash_seen", "1");
+        return true;
+      }
+    } catch {
+      return true;
+    }
+    return false;
+  });
 
   // Interactive Alert Bell Popover state
   const [bellOpen, setBellOpen] = useState(false);
@@ -693,7 +755,14 @@ export function PortalLayout() {
   }
 
   return (
-    <div className="portal">
+    <div className={`portal ${portalTheme === "light" ? "theme-light" : "theme-dark"}`}>
+      {showMobileSplash && (
+        <MobileCandlestickSplash
+          theme={portalTheme}
+          onFinish={() => setShowMobileSplash(false)}
+        />
+      )}
+
       <aside className={`portal-sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-logo">
           <Logo />
@@ -725,8 +794,16 @@ export function PortalLayout() {
           )}
           <button
             type="button"
+            onClick={togglePortalTheme}
+            className="h-[44px] px-[13px] rounded-[12px] flex items-center gap-[13px] text-[#a4abb6] hover:text-white hover:bg-white/10 text-[13.5px] font-semibold transition cursor-pointer w-full text-left border-0 bg-transparent"
+          >
+            {portalTheme === "dark" ? <Sun size={18} className="text-[#ffde02]" /> : <Moon size={18} />}
+            <span>{portalTheme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme"}</span>
+          </button>
+          <button
+            type="button"
             onClick={handleLogout}
-            className="h-[46px] px-[13px] rounded-[12px] flex items-center gap-[13px] text-[#f6465d] hover:text-white hover:bg-[#f6465d]/15 text-[13.5px] font-semibold transition cursor-pointer w-full text-left border-0 bg-transparent"
+            className="h-[44px] px-[13px] rounded-[12px] flex items-center gap-[13px] text-[#f6465d] hover:text-white hover:bg-[#f6465d]/15 text-[13.5px] font-semibold transition cursor-pointer w-full text-left border-0 bg-transparent"
           >
             <LogOut size={18} />
             <span>Log out</span>
@@ -767,148 +844,195 @@ export function PortalLayout() {
       {open && <button className="sidebar-scrim" onClick={() => setOpen(false)} />}
       <div className="portal-main">
         <div className="portal-topbar">
-          <button className="mobile-menu" onClick={() => setOpen(true)}>
-            <Icon name="menu" />
-          </button>
-          <form onSubmit={handleSearchSubmit} className="portal-search">
-            <Icon name="search" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search courses, live sessions, VIP signals, trades..."
-            />
-            <kbd>↵</kbd>
-          </form>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button className="mobile-menu" onClick={() => setOpen(true)} aria-label="Open menu">
+              <Icon name="menu" />
+            </button>
+            <div className="mobile-app-brand">
+              <Logo />
+            </div>
+            <form onSubmit={handleSearchSubmit} className="portal-search">
+              <Icon name="search" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search courses, live sessions, VIP signals, trades..."
+              />
+              <kbd>↵</kbd>
+            </form>
+          </div>
 
-          {/* Interactive Alert Bell Linked to Client Audit Logs & Trade Events */}
-          <div className="relative" ref={bellRef}>
+          {/* Right-Aligned Topbar Actions (PWA Install, Theme Toggle, Alert Bell, Profile Pic, Logout) */}
+          <div className="portal-topbar-actions ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+            <PWAInstallButton compact />
+
+            {/* Light / Dark Theme Toggle */}
             <button
               type="button"
-              onClick={() => setBellOpen((prev) => !prev)}
-              className="notify relative cursor-pointer"
-              title="Client Alerts, Trade Notifications & Audit Feed"
+              onClick={togglePortalTheme}
+              title={portalTheme === "dark" ? "Switch Dashboard to Light Theme" : "Switch Dashboard to Dark Theme"}
+              className="theme-toggle-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold transition cursor-pointer shrink-0"
             >
-              <Icon name="bell" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f6465d] text-white text-[10px] font-mono font-extrabold flex items-center justify-center border border-[#0b0e14]">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
+              {portalTheme === "dark" ? (
+                <>
+                  <Sun size={14} className="text-[#ffde02]" />
+                  <span className="hidden md:inline">Light</span>
+                </>
+              ) : (
+                <>
+                  <Moon size={14} className="text-slate-700" />
+                  <span className="hidden md:inline">Dark</span>
+                </>
               )}
             </button>
 
-            {bellOpen && (
-              <div className="absolute right-0 mt-2.5 w-[340px] sm:w-[390px] rounded-2xl bg-[#11151f] border border-white/15 shadow-2xl z-50 overflow-hidden">
-                <div className="px-4 py-3.5 bg-[#161b26] border-b border-white/10 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] block">
-                      CLIENT AUDIT &amp; TRADE ALERTS
-                    </span>
-                    <h4 className="text-xs font-extrabold text-white mt-0.5">
-                      Notifications ({unreadCount} unread)
-                    </h4>
-                  </div>
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void handleMarkAllRead()}
-                      className="px-2.5 py-1 rounded-lg bg-[#ffde02]/15 hover:bg-[#ffde02]/25 border border-[#ffde02]/30 text-[10px] font-bold text-[#ffde02] transition cursor-pointer"
-                    >
-                      Mark all as read
-                    </button>
-                  )}
-                </div>
+            {/* Interactive Alert Bell Linked to Client Audit Logs & Trade Events */}
+            <div className="relative flex items-center" ref={bellRef}>
+              <button
+                type="button"
+                onClick={() => setBellOpen((prev) => !prev)}
+                className="notify relative cursor-pointer p-2 rounded-full hover:bg-white/10 transition flex items-center justify-center"
+                title="Client Alerts, Trade Notifications & Audit Feed"
+              >
+                <Icon name="bell" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f6465d] text-white text-[10px] font-mono font-extrabold flex items-center justify-center border border-[#0b0e14]">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
 
-                <div className="max-h-[360px] overflow-y-auto divide-y divide-white/10">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center space-y-1.5">
-                      <Bell size={22} className="mx-auto text-[#7f8a9d]" />
-                      <p className="text-xs font-bold text-white">No alerts for your account yet</p>
-                      <p className="text-[11px] text-[#8c95a6]">
-                        Whenever you copy a trade, a signal hits TP1–TP5, or an account audit event occurs, it will appear right here.
-                      </p>
+              {bellOpen && (
+                <div className="bell-popover absolute right-0 top-full mt-2.5 w-[330px] sm:w-[390px] rounded-2xl bg-[#11151f] border border-white/15 shadow-2xl z-50 overflow-hidden">
+                  <div className="px-4 py-3.5 bg-[#161b26] border-b border-white/10 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] block">
+                        CLIENT AUDIT &amp; TRADE ALERTS
+                      </span>
+                      <h4 className="text-xs font-extrabold text-white mt-0.5">
+                        Notifications ({unreadCount} unread)
+                      </h4>
                     </div>
-                  ) : (
-                    notifications.map((item) => (
+                    {unreadCount > 0 && (
                       <button
-                        key={item.id}
                         type="button"
-                        onClick={() => void handleNotificationClick(item)}
-                        className={`w-full text-left px-4 py-3 transition flex items-start gap-3 cursor-pointer ${
-                          item.isRead
-                            ? "bg-transparent hover:bg-white/5 opacity-75"
-                            : "bg-[#ffde02]/[0.06] hover:bg-[#ffde02]/[0.12]"
-                        }`}
+                        onClick={() => void handleMarkAllRead()}
+                        className="px-2.5 py-1 rounded-lg bg-[#ffde02]/15 hover:bg-[#ffde02]/25 border border-[#ffde02]/30 text-[10px] font-bold text-[#ffde02] transition cursor-pointer"
                       >
-                        <span
-                          className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
-                            item.isRead
-                              ? "bg-white/20"
-                              : item.category === "tp_hit"
-                              ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
-                              : item.category === "trade"
-                              ? "bg-[#ffde02] shadow-[0_0_8px_#ffde02]"
-                              : "bg-sky-400"
-                          }`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-bold text-white truncate">
-                              {item.title}
-                            </span>
-                            <span className="text-[10px] font-mono text-[#7f8a9d] shrink-0">
-                              {new Date(item.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[#b4bccb] leading-relaxed mt-0.5 line-clamp-2">
-                            {item.message}
-                          </p>
-                          <div className="flex items-center justify-between mt-1.5">
-                            <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/5 text-[#9aa4b5]">
-                              {item.category.replace("_", " ")}
-                            </span>
-                            {!item.isRead && (
-                              <span className="text-[10px] font-bold text-[#ffde02]">
-                                Click to mark read →
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        Mark all as read
                       </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+                    )}
+                  </div>
 
-          <Link to={admin ? "/admin" : "/settings"} title="Profile & Settings" className="shrink-0">
-            {admin ? (
-              <img
-                src="/ceo.png"
-                alt="Pastor Mike"
-                className="w-9 h-9 rounded-full object-cover border border-[#ffde02]/50"
-              />
-            ) : (
-              <StudentAvatarBadge avatarUrl={student.avatarUrl} name={student.fullName} />
-            )}
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Log out"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-[#f6465d]/15 hover:border-[#f6465d]/40 hover:text-[#f6465d] text-xs font-bold text-[#c4c9d2] transition cursor-pointer"
-          >
-            <LogOut size={14} />
-            <span className="hidden sm:inline">Log out</span>
-          </button>
+                  <div className="max-h-[360px] overflow-y-auto divide-y divide-white/10">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center space-y-1.5">
+                        <Bell size={22} className="mx-auto text-[#7f8a9d]" />
+                        <p className="text-xs font-bold text-white">No alerts for your account yet</p>
+                        <p className="text-[11px] text-[#8c95a6]">
+                          Whenever you copy a trade, a signal hits TP1–TP5, or an account audit event occurs, it will appear right here.
+                        </p>
+                      </div>
+                    ) : (
+                      notifications.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => void handleNotificationClick(item)}
+                          className={`w-full text-left px-4 py-3 transition flex items-start gap-3 cursor-pointer ${
+                            item.isRead
+                              ? "bg-transparent hover:bg-white/5 opacity-75"
+                              : "bg-[#ffde02]/[0.06] hover:bg-[#ffde02]/[0.12]"
+                          }`}
+                        >
+                          <span
+                            className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
+                              item.isRead
+                                ? "bg-white/20"
+                                : item.category === "tp_hit"
+                                ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                                : item.category === "trade"
+                                ? "bg-[#ffde02] shadow-[0_0_8px_#ffde02]"
+                                : "bg-sky-400"
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-white truncate">
+                                {item.title}
+                              </span>
+                              <span className="text-[10px] font-mono text-[#7f8a9d] shrink-0">
+                                {new Date(item.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#b4bccb] leading-relaxed mt-0.5 line-clamp-2">
+                              {item.message}
+                            </p>
+                            <div className="flex items-center justify-between mt-1.5">
+                              <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/5 text-[#9aa4b5]">
+                                {item.category.replace("_", " ")}
+                              </span>
+                              {!item.isRead && (
+                                <span className="text-[10px] font-bold text-[#ffde02]">
+                                  Click to mark read →
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Link to={admin ? "/admin" : "/settings"} title="Profile & Settings" className="shrink-0">
+              {admin ? (
+                <img
+                  src="/ceo.png"
+                  alt="Pastor Mike"
+                  className="w-9 h-9 rounded-full object-cover border border-[#ffde02]/50"
+                />
+              ) : (
+                <StudentAvatarBadge avatarUrl={student.avatarUrl} name={student.fullName} />
+              )}
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Log out"
+              className="logout-top-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-[#f6465d]/15 hover:border-[#f6465d]/40 hover:text-[#f6465d] text-xs font-bold text-[#c4c9d2] transition cursor-pointer shrink-0"
+            >
+              <LogOut size={14} />
+              <span className="hidden sm:inline">Log out</span>
+            </button>
+          </div>
         </div>
         <main className="portal-content">
           <Outlet />
         </main>
       </div>
+
+      {/* Native Mobile App Lower Navigation Bar */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Bottom Navigation">
+        {(admin ? mobileAdminTabs : mobileStudentTabs).map(([label, to, icon]) => (
+          <NavLink
+            to={to}
+            end={to === "/admin" || to === "/dashboard"}
+            key={to}
+            className={({ isActive }) => `mobile-bottom-tab ${isActive ? "active" : ""}`}
+          >
+            <span className="mobile-tab-icon">
+              <Icon name={icon} size={19} />
+            </span>
+            <span className="mobile-tab-label">{label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -5290,8 +5414,8 @@ export function AdminDashboardPage() {
               "bell",
             ],
             [
-              "Exness API & Supabase SQL Schema",
-              "Sync Exness Partner accounts & copy the upgraded SQL schema",
+              "Exness Partner Sync & Tickets",
+              "Sync external Exness Partner accounts, transfer tickets & student verification",
               "/admin/verification",
               "shield",
             ],
@@ -5585,26 +5709,8 @@ function DataTools() {
 }
 
 export function VerificationPage() {
-  const [config, setConfig] = useState<ExnessConfig>(getStoredConfig());
+  const [config] = useState<ExnessConfig>(getStoredConfig());
   const [roster, setRoster] = useState<ExnessStudent[]>(getStoredRoster());
-  const [apiKey, setApiKey] = useState(config.apiKey);
-  const [apiJwt, setApiJwt] = useState(config.apiJwt);
-  const [partnerCode, setPartnerCode] = useState(config.partnerCode);
-  const [mode, setMode] = useState<"simulation" | "live">(config.mode);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showJwt, setShowJwt] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-
-  // Supabase Schema & Management API push state
-  const [schemaCopied, setSchemaCopied] = useState(false);
-  const [upgradeSqlCopied, setUpgradeSqlCopied] = useState(false);
-  const [dashboardSqlCopied, setDashboardSqlCopied] = useState(false);
-  const [showSchemaPreview, setShowSchemaPreview] = useState(false);
-  const [supabaseAccessToken, setSupabaseAccessToken] = useState("");
-  const [pushingSchema, setPushingSchema] = useState(false);
-  const [schemaPushResult, setSchemaPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // New Approved Trading Account Registration Form State
   const [newFullName, setNewFullName] = useState("");
@@ -5757,25 +5863,7 @@ export function VerificationPage() {
     }
   }
 
-  function handleCopySchema() {
-    navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
-    setSchemaCopied(true);
-    setTimeout(() => setSchemaCopied(false), 2500);
-  }
-
-  function handleCopyUpgradeSql() {
-    navigator.clipboard.writeText(EXNESS_PARTNER_CLIENTS_UPGRADE_SQL);
-    setUpgradeSqlCopied(true);
-    setTimeout(() => setUpgradeSqlCopied(false), 2500);
-  }
-
-  function handleCopyDashboardSql() {
-    navigator.clipboard.writeText(DASHBOARD_UPGRADE_SQL);
-    setDashboardSqlCopied(true);
-    setTimeout(() => setDashboardSqlCopied(false), 2500);
-  }
-
-  // Live Auto-Sync from Exness Partner Link into Supabase SQL
+  // Live Auto-Sync from Exness Partner Link
   const [refreshingLiveExness, setRefreshingLiveExness] = useState(false);
   const [liveExnessFeedback, setLiveExnessFeedback] = useState<string | null>(null);
 
@@ -5789,52 +5877,6 @@ export function VerificationPage() {
     setRoster(updated);
     await loadTransferTickets();
     setTimeout(() => setLiveExnessFeedback(null), 5000);
-  }
-
-  async function handlePushSchema(e: FormEvent) {
-    e.preventDefault();
-    setPushingSchema(true);
-    setSchemaPushResult(null);
-    const res = await pushSchemaToSupabaseManagementApi(supabaseAccessToken);
-    setPushingSchema(false);
-    setSchemaPushResult(res);
-  }
-
-  function handleSaveCredentials(e: FormEvent) {
-    e.preventDefault();
-    const updated: ExnessConfig = {
-      ...config,
-      apiKey: apiKey.trim(),
-      apiJwt: apiJwt.trim(),
-      partnerCode: partnerCode.trim(),
-      mode,
-      connectionStatus: "connected",
-      statusMessage: `Configured for ${mode.toUpperCase()} mode with Partner Code ${partnerCode}`,
-    };
-    saveStoredConfig(updated);
-    setConfig(updated);
-    setActionFeedback("Exness API credentials saved successfully!");
-    setTimeout(() => setActionFeedback(null), 3000);
-  }
-
-  async function handleTestApi() {
-    setTesting(true);
-    setTestResult(null);
-    await new Promise((res) => setTimeout(res, 700));
-    setTesting(false);
-
-    if (!apiKey && !apiJwt) {
-      setTestResult({
-        success: false,
-        message: "Please provide either an Exness API Key or Exness JWT Token to authenticate.",
-      });
-      return;
-    }
-
-    setTestResult({
-      success: true,
-      message: `Connection Verified! Exness Partner Engine authorized for Partner Account #${OFFICIAL_PARTNER_ACCOUNT_ID} (Code: "${partnerCode}"). 13 referred clients and $2,273.15 partner rewards synced with Supabase (${SUPABASE_PROJECT_REF}).`,
-    });
   }
 
   function togglePartner(studentId: string) {
@@ -5866,314 +5908,21 @@ export function VerificationPage() {
   return (
     <>
       <Header
-        eyebrow="EXNESS & SUPABASE INTEGRATION"
-        title="Exness Partner & Supabase Console"
-        copy="Manage your Exness JWT token, Supabase PostgreSQL schema, live partner clients, and student deposit eligibility."
+        eyebrow="EXNESS PARTNER SYNC & TICKETS"
+        title="Exness Partner Accounts & Transfer Tickets"
+        copy="Sync external Exness Partner accounts, review submitted partner transfer tickets, and manage student deposit eligibility."
         action={
-          <Badge tone="yellow">
-            {config.mode === "live" ? "LIVE API & SUPABASE ACTIVE" : "SIMULATION MODE"}
-          </Badge>
+          <button
+            type="button"
+            disabled={refreshingLiveExness}
+            onClick={handleRefreshLiveFromExness}
+            className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-2 disabled:opacity-60"
+          >
+            <RefreshCw size={14} className={refreshingLiveExness ? "animate-spin" : ""} />
+            {refreshingLiveExness ? "Syncing External Accounts..." : "Sync External Exness Partner Accounts"}
+          </button>
         }
       />
-
-      {/* SUPABASE PROJECT & FULL SCHEMA PUSH MANAGER */}
-      <div className="bg-[#151820] border border-[#ffde02]/30 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <span className="w-11 h-11 rounded-xl bg-[#ffde02]/15 text-[#ffde02] flex items-center justify-center shrink-0">
-              <Database size={22} />
-            </span>
-            <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
-                Supabase Connected · {SUPABASE_PROJECT_REF}
-              </span>
-              <h2 className="text-xl font-bold text-white mt-1">
-                Supabase PostgreSQL Schema &amp; Account Sync
-              </h2>
-              <p className="text-xs text-[#9aa4b5] mt-0.5 font-mono">{SUPABASE_PROJECT_URL}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              disabled={refreshingLiveExness}
-              onClick={handleRefreshLiveFromExness}
-              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
-            >
-              <RefreshCw size={14} className={refreshingLiveExness ? "animate-spin" : ""} />
-              {refreshingLiveExness ? "Syncing from Exness..." : "Refresh Live Exness Link Data"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyDashboardSql}
-              className="bg-[#ffde02]/20 hover:bg-[#ffde02]/30 border border-[#ffde02]/50 text-[#ffde02] font-extrabold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition cursor-pointer flex items-center gap-1.5"
-            >
-              {dashboardSqlCopied ? <Check size={14} /> : <Copy size={14} />}
-              {dashboardSqlCopied ? "Copied Dashboard Upgrade SQL!" : "Copy Dashboard Upgrade SQL"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyUpgradeSql}
-              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition cursor-pointer flex items-center gap-1.5"
-            >
-              {upgradeSqlCopied ? <Check size={14} /> : <Copy size={14} />}
-              {upgradeSqlCopied ? "Copied SQL!" : "Copy exness_partner_clients SQL"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCopySchema}
-              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition cursor-pointer flex items-center gap-1.5"
-            >
-              {schemaCopied ? <Check size={14} /> : <Copy size={14} />}
-              {schemaCopied ? "Copied Full SQL Schema!" : "Copy Full SQL Schema"}
-            </button>
-            <a
-              href={`https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/sql/new`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-full transition flex items-center gap-1.5"
-            >
-              Open Supabase SQL Editor <ExternalLink size={13} />
-            </a>
-            <button
-              type="button"
-              onClick={() => setShowSchemaPreview(!showSchemaPreview)}
-              className="bg-white/5 hover:bg-white/10 border border-white/10 text-[#b8c0cc] font-bold text-xs uppercase tracking-wider px-3.5 py-2.5 rounded-full transition cursor-pointer"
-            >
-              {showSchemaPreview ? "Hide SQL" : "View Upgrade SQL"}
-            </button>
-          </div>
-        </div>
-
-        {/* Pushed Account Artifacts Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 mt-5">
-          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-              Supabase Storage Buckets
-            </span>
-            <p className="text-sm font-bold text-[#ffde02] mt-1 font-mono">
-              student-avatars · course-videos
-            </p>
-            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
-              Public buckets for photos &amp; videos
-            </span>
-          </div>
-          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-              PostgreSQL Tables Defined
-            </span>
-            <p className="text-sm font-bold text-white mt-1">15 Tables + RLS Policies</p>
-            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
-              courses, lessons, quizzes, live, trades, etc.
-            </span>
-          </div>
-          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-              Exness Partner Clients Synced
-            </span>
-            <p className="text-sm font-bold text-[#ffde02] mt-1">
-              {EXNESS_PARTNER_TOTALS.count} Live Accounts
-            </p>
-            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
-              ${EXNESS_PARTNER_TOTALS.reward_usd} rewards · {EXNESS_PARTNER_TOTALS.volume_lots} lots
-            </span>
-          </div>
-          <div className="bg-[#1b1f29] border border-white/10 rounded-xl p-3.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#9aa4b5]">
-              Supabase Auth Users
-            </span>
-            <p className="text-sm font-bold text-white mt-1">Synced via Service Role</p>
-            <span className="text-[11px] text-[#b8c0cc] mt-0.5 block">
-              Auto-registers on onboarding
-            </span>
-          </div>
-        </div>
-
-        {/* Direct DDL Push via Supabase Management API Token */}
-        <form onSubmit={handlePushSchema} className="mt-5 pt-5 border-t border-white/10">
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
-                Direct DDL Push via Supabase Personal Access Token (Optional · Or Paste in SQL Editor)
-              </label>
-              <input
-                type="password"
-                value={supabaseAccessToken}
-                onChange={(e) => setSupabaseAccessToken(e.target.value)}
-                placeholder="sbp_... (From https://supabase.com/dashboard/account/tokens)"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={pushingSchema}
-              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-xl hover:bg-[#ffe540] transition cursor-pointer shrink-0"
-            >
-              {pushingSchema ? "Pushing DDL..." : "Push Schema to Postgres"}
-            </button>
-          </div>
-          {schemaPushResult && (
-            <div className="mt-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-start gap-2">
-              <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
-              <span>{schemaPushResult.message}</span>
-            </div>
-          )}
-        </form>
-
-        {showSchemaPreview && (
-          <div className="mt-5">
-            <pre className="bg-[#0d1016] border border-white/10 rounded-xl p-4 text-[11px] font-mono text-[#b8c0cc] overflow-x-auto max-h-96 overflow-y-auto">
-              {DASHBOARD_UPGRADE_SQL}
-            </pre>
-          </div>
-        )}
-      </div>
-
-      {/* EXNESS API & JWT CREDENTIALS CONFIGURATION CARD */}
-      <div className="bg-[#151820] border border-white/10 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <span className="w-11 h-11 rounded-xl bg-[#ffde02]/15 text-[#ffde02] flex items-center justify-center shrink-0">
-              <Key size={22} />
-            </span>
-            <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
-                Credentials &amp; Auth
-              </span>
-              <h2 className="text-xl font-bold text-white mt-1">Exness API &amp; JWT Token Manager</h2>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 bg-[#101217] p-1 rounded-xl border border-white/10 text-xs">
-            <button
-              type="button"
-              onClick={() => setMode("simulation")}
-              className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                mode === "simulation" ? "bg-[#ffde02] text-black shadow" : "text-[#8c94a2] hover:text-white"
-              }`}
-            >
-              Simulation Mode
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("live")}
-              className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                mode === "live" ? "bg-[#ffde02] text-black shadow" : "text-[#8c94a2] hover:text-white"
-              }`}
-            >
-              Live API Check
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={handleSaveCredentials} className="mt-6 space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                Partner Link &amp; Code ({partnerCode})
-              </label>
-              <input
-                type="text"
-                value={partnerCode}
-                onChange={(e) => setPartnerCode(e.target.value)}
-                placeholder="qgcrue4rqj"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-3 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
-              />
-              <span className="block text-[10px] font-mono text-[#7d8799] mt-1 truncate">
-                {config.partnerLink}
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                Exness API Key
-              </label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="exn_live_sec_..."
-                  className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-3 pr-11 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7d8799] hover:text-white transition p-1"
-                >
-                  {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                Exness API JWT Token
-              </label>
-              <div className="relative">
-                <input
-                  type={showJwt ? "text" : "password"}
-                  value={apiJwt}
-                  onChange={(e) => setApiJwt(e.target.value)}
-                  placeholder="eyJhbGciOiJSUzI1NiIs..."
-                  className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-4 py-3 pr-11 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowJwt(!showJwt)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7d8799] hover:text-white transition p-1"
-                >
-                  {showJwt ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-6 py-3 rounded-full hover:bg-[#ffe540] transition cursor-pointer"
-              >
-                Save Credentials
-              </button>
-              <button
-                type="button"
-                disabled={testing}
-                onClick={handleTestApi}
-                className="bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider px-5 py-3 rounded-full transition cursor-pointer flex items-center gap-2"
-              >
-                {testing ? "Testing..." : "Test Connection"}{" "}
-                <RefreshCw size={14} className={testing ? "animate-spin" : ""} />
-              </button>
-            </div>
-
-            {actionFeedback && (
-              <span className="text-xs text-[#ffde02] font-semibold flex items-center gap-1.5">
-                <CheckCircle2 size={15} /> {actionFeedback}
-              </span>
-            )}
-          </div>
-
-          {testResult && (
-            <div
-              className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
-                testResult.success
-                  ? "bg-[#ffde02]/10 border border-[#ffde02]/30 text-[#ffde02]"
-                  : "bg-red-500/10 border border-red-500/30 text-red-300"
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle2 size={16} className="text-[#ffde02] shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
-              )}
-              <span>{testResult.message}</span>
-            </div>
-          )}
-        </form>
-      </div>
 
       {/* LIVE EXNESS PARTNER API REFERRED CLIENTS & TRADING ACCOUNTS */}
       <Card className="data-card mb-8">
