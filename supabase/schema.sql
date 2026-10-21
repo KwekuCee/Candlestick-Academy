@@ -14,6 +14,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.students (
   id TEXT PRIMARY KEY,
   auth_user_id UUID UNIQUE,
+  username TEXT UNIQUE,
+  account_password TEXT DEFAULT '',
   full_name TEXT NOT NULL,
   country TEXT NOT NULL DEFAULT 'Ghana',
   email TEXT NOT NULL UNIQUE,
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS public.students (
 );
 
 CREATE INDEX IF NOT EXISTS idx_students_email ON public.students(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_students_username_lower ON public.students (LOWER(username)) WHERE username IS NOT NULL AND username <> '';
 CREATE INDEX IF NOT EXISTS idx_students_exness_id ON public.students(exness_id);
 CREATE INDEX IF NOT EXISTS idx_students_exness_client_uid ON public.students(exness_client_uid);
 
@@ -337,6 +340,8 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 -- =============================================================================
 
 ALTER TABLE public.students
+  ADD COLUMN IF NOT EXISTS username TEXT,
+  ADD COLUMN IF NOT EXISTS account_password TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS avatar_url TEXT,
   ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS telegram_handle TEXT DEFAULT '',
@@ -351,6 +356,10 @@ ALTER TABLE public.students
   ADD COLUMN IF NOT EXISTS streak_days INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS best_streak_days INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS last_active_date DATE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_students_username_lower
+  ON public.students (LOWER(username))
+  WHERE username IS NOT NULL AND username <> '';
 
 CREATE TABLE IF NOT EXISTS public.course_lessons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

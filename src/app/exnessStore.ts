@@ -3,6 +3,8 @@ import schemaSqlRaw from "../../supabase/schema.sql?raw";
 
 export interface ExnessStudent {
   id: string;
+  username?: string;
+  accountPassword?: string;
   fullName: string;
   country: string;
   email: string;
@@ -568,6 +570,7 @@ const DEFAULT_CURRENT_USER: ExnessStudent = {
 const INITIAL_ROSTER: ExnessStudent[] = [
   {
     id: "std-1",
+    username: "ama",
     fullName: "Ama Mensah",
     country: "Ghana",
     email: "ama@example.com",
@@ -590,6 +593,7 @@ const INITIAL_ROSTER: ExnessStudent[] = [
   },
   {
     id: "std-2",
+    username: "kofi",
     fullName: "Kofi Owusu",
     country: "Ghana",
     email: "kofi@example.com",
@@ -675,14 +679,48 @@ const INITIAL_ROSTER: ExnessStudent[] = [
   },
 ];
 
+// Local credential fallback store so usernames & passwords work even before running SQL migration
+function getLocalCredentialsMap(): Record<string, { username?: string; accountPassword?: string }> {
+  try {
+    const raw = localStorage.getItem("candlesticks_client_credentials");
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
+function saveLocalCredentialEntry(email: string, username?: string, accountPassword?: string) {
+  if (!email) return;
+  try {
+    const map = getLocalCredentialsMap();
+    const key = email.trim().toLowerCase();
+    const prev = map[key] || {};
+    map[key] = {
+      username: username !== undefined ? username.trim().toLowerCase() : prev.username,
+      accountPassword: accountPassword !== undefined && accountPassword !== "" ? accountPassword : prev.accountPassword,
+    };
+    localStorage.setItem("candlesticks_client_credentials", JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
 // Convert a Supabase `public.students` database row to ExnessStudent
 function mapDbRowToStudent(row: Record<string, unknown>): ExnessStudent {
   const uid = row.exness_client_uid ? String(row.exness_client_uid) : undefined;
+  const emailStr = String(row.email || "");
+  const localCreds = getLocalCredentialsMap()[emailStr.toLowerCase()];
+  const rowUsername = row.username ? String(row.username).trim().toLowerCase() : undefined;
+  const rowPassword = row.account_password ? String(row.account_password) : undefined;
+
   return {
     id: String(row.id || `std-${Date.now()}`),
+    username: rowUsername || localCreds?.username,
+    accountPassword: rowPassword || localCreds?.accountPassword,
     fullName: String(row.full_name || "Student"),
     country: String(row.country || "Ghana"),
-    email: String(row.email || ""),
+    email: emailStr,
     hasExnessAccount: Boolean(row.has_exness_account),
     exnessId: String(row.exness_id || ""),
     exnessEmail: String(row.exness_email || row.email || ""),
@@ -724,8 +762,9 @@ function mapDbRowToStudent(row: Record<string, unknown>): ExnessStudent {
 
 // Fetch live student roster from Supabase `public.students` table and update localStorage cache
 export async function refreshRosterFromSupabase(): Promise<ExnessStudent[]> {
+  const existingLocal = getStoredRoster();
   if (!isSupabaseConfigured || !supabase) {
-    return getStoredRoster();
+    return existingLocal;
   }
 
   try {
@@ -735,7 +774,23 @@ export async function refreshRosterFromSupabase(): Promise<ExnessStudent[]> {
       .order("registration_date", { ascending: false });
 
     if (!error && Array.isArray(data) && data.length > 0) {
-      const mapped = data.map((r) => mapDbRowToStudent(r as Record<string, unknown>));
+      const mapped = data.map((r) => {
+        const student = mapDbRowToStudent(r as Record<string, unknown>);
+        const localMatch = existingLocal.find(
+          (item) => item.email.toLowerCase() === student.email.toLowerCase()
+        );
+        return {
+          ...student,
+          username: student.username || localMatch?.username,
+          accountPassword: student.accountPassword || localMatch?.accountPassword,
+        };
+      });
+      // Also preserve any newly created local students that haven't synced to Supabase yet
+      for (const loc of existingLocal) {
+        if (!mapped.some((m) => m.email.toLowerCase() === loc.email.toLowerCase())) {
+          mapped.unshift(loc);
+        }
+      }
       localStorage.setItem("candlesticks_students_roster", JSON.stringify(mapped));
       window.dispatchEvent(new Event("candlesticks_roster_updated"));
       return mapped;
@@ -743,20 +798,26 @@ export async function refreshRosterFromSupabase(): Promise<ExnessStudent[]> {
   } catch (err) {
     console.debug("Could not fetch students from Supabase:", err);
   }
-  return getStoredRoster();
+  return existingLocal;
 }
 
 // Sync student record to Supabase (`public.students` table + Auth signUp)
 export async function syncStudentToSupabase(user: ExnessStudent, password?: string) {
+  const effectivePassword = password || user.accountPassword;
+  if (user.email && (user.username || effectivePassword)) {
+    saveLocalCredentialEntry(user.email, user.username, effectivePassword);
+  }
+
   if (!isSupabaseConfigured || !supabase) return;
 
   try {
-    if (password && user.email) {
+    if (effectivePassword && user.email) {
       await supabase.auth.signUp({
         email: user.email,
-        password,
+        password: effectivePassword,
         options: {
           data: {
+            username: user.username || "",
             full_name: user.fullName,
             country: user.country,
             exness_id: user.exnessId,
@@ -790,6 +851,13 @@ export async function syncStudentToSupabase(user: ExnessStudent, password?: stri
       updated_at: new Date().toISOString(),
     };
 
+    if (user.username !== undefined && user.username.trim() !== "") {
+      payload.username = user.username.trim().toLowerCase();
+    }
+    if (effectivePassword !== undefined && effectivePassword !== "") {
+      payload.account_password = effectivePassword;
+    }
+
     // Include extended profile fields if present
     if (user.avatarUrl !== undefined) payload.avatar_url = user.avatarUrl;
     if (user.phone !== undefined) payload.phone = user.phone;
@@ -803,7 +871,7 @@ export async function syncStudentToSupabase(user: ExnessStudent, password?: stri
     if (user.notifySignals !== undefined) payload.notify_signals = user.notifySignals;
     if (user.notifySessions !== undefined) payload.notify_sessions = user.notifySessions;
     if (user.streakDays !== undefined) payload.streak_days = user.streakDays;
-    if (user.bestStreakDays !== undefined) payload.best_streak_days = user.bestStreakDays;
+    if (user.bestStreakDays !== undefined) payload.best_streak_days = user.best_streak_days;
     if (user.lastActiveDate !== undefined) payload.last_active_date = user.lastActiveDate;
 
     const { error } = await supabase.from("students").upsert(payload, { onConflict: "email" });
@@ -958,7 +1026,15 @@ export async function registerApprovedTradingAccountInSupabase(params: {
 export function getStoredCurrentUser(): ExnessStudent {
   try {
     const raw = localStorage.getItem("candlesticks_current_student");
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ExnessStudent;
+      const creds = parsed.email ? getLocalCredentialsMap()[parsed.email.toLowerCase()] : undefined;
+      return {
+        ...parsed,
+        username: parsed.username || creds?.username,
+        accountPassword: parsed.accountPassword || creds?.accountPassword,
+      };
+    }
   } catch (e) {
     console.error("Failed to read student from localStorage", e);
   }
@@ -967,17 +1043,288 @@ export function getStoredCurrentUser(): ExnessStudent {
 
 export function saveStoredCurrentUser(user: ExnessStudent, password?: string) {
   try {
-    localStorage.setItem("candlesticks_current_student", JSON.stringify(user));
+    const updatedUser: ExnessStudent = {
+      ...user,
+      username: user.username ? normalizeUsername(user.username) : user.username,
+      accountPassword: password || user.accountPassword,
+    };
+    if (updatedUser.email && (updatedUser.username || updatedUser.accountPassword)) {
+      saveLocalCredentialEntry(updatedUser.email, updatedUser.username, updatedUser.accountPassword);
+    }
+    localStorage.setItem("candlesticks_current_student", JSON.stringify(updatedUser));
     window.dispatchEvent(new Event("candlesticks_user_updated"));
-    void syncStudentToSupabase(user, password);
+    void syncStudentToSupabase(updatedUser, password || updatedUser.accountPassword);
   } catch (e) {
     console.error("Failed to save student", e);
   }
 }
 
+export const MASTER_ADMIN_USERNAME = "master";
+export const MASTER_ADMIN_PASSWORD = "12Reason000@";
+export const RESERVED_ADMIN_USERNAMES = ["master", "admin", "pastormike", "candlesticks", "support", "founder"];
+
+export function normalizeUsername(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^@+/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+export function isMasterAdminAuthenticated(): boolean {
+  try {
+    return localStorage.getItem("candlesticks_admin_authenticated") === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function setMasterAdminAuthenticated(authenticated: boolean) {
+  try {
+    if (authenticated) {
+      localStorage.setItem("candlesticks_admin_authenticated", "true");
+    } else {
+      localStorage.removeItem("candlesticks_admin_authenticated");
+    }
+    window.dispatchEvent(new Event("candlesticks_user_updated"));
+  } catch {
+    // ignore
+  }
+}
+
+export async function checkUsernameAvailability(
+  rawUsername: string,
+  excludeEmail?: string,
+  excludeStudentId?: string
+): Promise<{
+  available: boolean;
+  normalized: string;
+  reason: string;
+}> {
+  const normalized = normalizeUsername(rawUsername);
+  if (!normalized) {
+    return {
+      available: false,
+      normalized: "",
+      reason: "Enter a username (3–24 characters, letters, numbers, underscores, or dots).",
+    };
+  }
+  if (normalized.length < 3) {
+    return {
+      available: false,
+      normalized,
+      reason: `Username @${normalized} is too short (minimum 3 characters).`,
+    };
+  }
+  if (normalized.length > 24) {
+    return {
+      available: false,
+      normalized,
+      reason: "Username cannot exceed 24 characters.",
+    };
+  }
+  if (!/^[a-z0-9_.]+$/.test(normalized)) {
+    return {
+      available: false,
+      normalized,
+      reason: "Use only letters, numbers, underscores (_), or dots (.).",
+    };
+  }
+  if (RESERVED_ADMIN_USERNAMES.includes(normalized)) {
+    return {
+      available: false,
+      normalized,
+      reason: `@${normalized} is reserved and not available.`,
+    };
+  }
+
+  const cleanExcludeEmail = excludeEmail ? excludeEmail.trim().toLowerCase() : "";
+  const cleanExcludeId = excludeStudentId ? excludeStudentId.trim() : "";
+
+  // 1. Check local credentials map and stored roster
+  const localMap = getLocalCredentialsMap();
+  for (const [emailKey, creds] of Object.entries(localMap)) {
+    if (cleanExcludeEmail && emailKey === cleanExcludeEmail) continue;
+    if (creds.username && creds.username.toLowerCase() === normalized) {
+      return {
+        available: false,
+        normalized,
+        reason: `@${normalized} is not available (already taken).`,
+      };
+    }
+  }
+
+  const roster = getStoredRoster();
+  const takenInRoster = roster.find((s) => {
+    if (cleanExcludeEmail && s.email.trim().toLowerCase() === cleanExcludeEmail) return false;
+    if (cleanExcludeId && s.id === cleanExcludeId) return false;
+    return s.username && normalizeUsername(s.username) === normalized;
+  });
+  if (takenInRoster) {
+    return {
+      available: false,
+      normalized,
+      reason: `@${normalized} is not available (already taken).`,
+    };
+  }
+
+  // 2. Check live Supabase `public.students` table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, email, username")
+        .ilike("username", normalized);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const takenInDb = data.find((row) => {
+          const rEmail = String(row.email || "").trim().toLowerCase();
+          const rId = String(row.id || "").trim();
+          if (cleanExcludeEmail && rEmail === cleanExcludeEmail) return false;
+          if (cleanExcludeId && rId === cleanExcludeId) return false;
+          return normalizeUsername(String(row.username || "")) === normalized;
+        });
+        if (takenInDb) {
+          return {
+            available: false,
+            normalized,
+            reason: `@${normalized} is not available (already taken).`,
+          };
+        }
+      }
+    } catch {
+      // Fallback to local roster result if column not migrated yet
+    }
+  }
+
+  return {
+    available: true,
+    normalized,
+    reason: `@${normalized} is available!`,
+  };
+}
+
+export async function authenticatePortalLogin(
+  identifierInput: string,
+  passwordInput: string
+): Promise<{
+  success: boolean;
+  role?: "admin" | "student";
+  student?: ExnessStudent;
+  message: string;
+}> {
+  const rawId = identifierInput.trim();
+  const cleanedId = rawId.toLowerCase();
+  const normalizedUser = normalizeUsername(rawId);
+
+  if (!rawId) {
+    return {
+      success: false,
+      message: "Please enter your Email or Username.",
+    };
+  }
+  if (!passwordInput) {
+    return {
+      success: false,
+      message: "Please enter your password.",
+    };
+  }
+
+  // 1. Check Master Admin credentials (username `master` or founder email)
+  if (
+    normalizedUser === MASTER_ADMIN_USERNAME ||
+    cleanedId === "mike.vinci77@gmail.com" ||
+    cleanedId === "admin@candlesticks.ac"
+  ) {
+    if (passwordInput === MASTER_ADMIN_PASSWORD) {
+      setMasterAdminAuthenticated(true);
+      return {
+        success: true,
+        role: "admin",
+        message: "Master Admin authenticated.",
+      };
+    } else {
+      return {
+        success: false,
+        message: "Invalid password for the master admin account.",
+      };
+    }
+  }
+
+  // 2. Client authentication via Email or Username (or Exness Account ID fallback)
+  const roster = await refreshRosterFromSupabase();
+  const current = getStoredCurrentUser();
+  const allCandidates = [...roster];
+  if (
+    current &&
+    current.email &&
+    !allCandidates.some((s) => s.email.toLowerCase() === current.email.toLowerCase())
+  ) {
+    allCandidates.unshift(current);
+  }
+
+  const matchedStudent = allCandidates.find((s) => {
+    const emailMatches = s.email && s.email.trim().toLowerCase() === cleanedId;
+    const usernameMatches = s.username && normalizeUsername(s.username) === normalizedUser;
+    const exnessIdMatches = s.exnessId && s.exnessId.trim().toLowerCase() === cleanedId;
+    return emailMatches || usernameMatches || exnessIdMatches;
+  });
+
+  if (!matchedStudent) {
+    return {
+      success: false,
+      message:
+        "No client account found matching that Email or Username. Please check your credentials or create an account.",
+    };
+  }
+
+  const storedCreds = getLocalCredentialsMap()[matchedStudent.email.toLowerCase()];
+  const expectedPassword = matchedStudent.accountPassword || storedCreds?.accountPassword;
+
+  if (expectedPassword) {
+    if (passwordInput !== expectedPassword) {
+      // Also allow Supabase Auth sign-in check in case password was updated via Supabase Auth
+      if (isSupabaseConfigured && supabase && matchedStudent.email) {
+        try {
+          const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+            email: matchedStudent.email,
+            password: passwordInput,
+          });
+          if (!authErr && authData?.user) {
+            setMasterAdminAuthenticated(false);
+            saveStoredCurrentUser(matchedStudent, passwordInput);
+            return {
+              success: true,
+              role: "student",
+              student: matchedStudent,
+              message: "Logged in successfully.",
+            };
+          }
+        } catch {
+          // ignore
+        }
+      }
+      return {
+        success: false,
+        message: "Incorrect password for this account. Please try again.",
+      };
+    }
+  }
+
+  setMasterAdminAuthenticated(false);
+  saveStoredCurrentUser(matchedStudent, expectedPassword || passwordInput);
+  return {
+    success: true,
+    role: "student",
+    student: matchedStudent,
+    message: "Welcome back!",
+  };
+}
+
 export function logoutCurrentUser() {
   try {
     localStorage.removeItem("candlesticks_current_student");
+    localStorage.removeItem("candlesticks_admin_authenticated");
     if (isSupabaseConfigured && supabase) {
       void supabase.auth.signOut();
     }

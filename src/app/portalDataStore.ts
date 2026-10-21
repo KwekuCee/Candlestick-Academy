@@ -18,8 +18,10 @@ export const CLIENT_DASHBOARD_UPGRADE_SQL = `-- ================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. UPGRADE public.students WITH PROFILE AVATAR, STREAK & TRADING PREFERENCES
+-- 1. UPGRADE public.students WITH USERNAME, PASSWORD, PROFILE AVATAR, STREAK & TRADING PREFERENCES
 ALTER TABLE public.students
+  ADD COLUMN IF NOT EXISTS username TEXT,
+  ADD COLUMN IF NOT EXISTS account_password TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS avatar_url TEXT,
   ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS telegram_handle TEXT DEFAULT '',
@@ -34,6 +36,10 @@ ALTER TABLE public.students
   ADD COLUMN IF NOT EXISTS streak_days INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS best_streak_days INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS last_active_date DATE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_students_username_lower
+  ON public.students (LOWER(username))
+  WHERE username IS NOT NULL AND username <> '';
 
 -- 2. COURSES TABLE (The 4 Signature Tracks + Level PDFs & Multi-Question Quizzes)
 CREATE TABLE IF NOT EXISTS public.courses (

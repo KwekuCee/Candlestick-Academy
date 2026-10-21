@@ -1,6 +1,6 @@
 {
-  "summary":  "Comprehensive implementation plan for Client Dashboard & Admin Console refinements: redesigned Macroeconomic Calendar and Position Size Calculator cards, interactive Client Alert Bell synced with Admin audit logs and trade/TP events, header/sidebar profile avatar sync, Admin-only real data across Courses/Live Sessions/Signals (zero demo fallbacks), AI-assisted multi-question quiz generation from 4 uploaded level PDFs (Beginner, Intermediate, Essential, Advanced), live market price feed with multi-TP (TP1–TP5) auto-detection and alerts, interactive Copy & Log Trade modal with custom TP/Lot sizing and Exness WebTerminal bridge, and Admin Certificate Template Designer with adjustable student name placement and PDF/PNG download.",
-  "updatedAt":  "2026-10-21T08:22:57.017358830Z",
+  "summary":  "Implementation plan for adding real-time username availability checks, client username and password setup in Onboarding and Settings, Email or Username + Password authentication, and dedicated Master Admin login credentials.",
+  "updatedAt":  "2026-10-21T10:15:22.756383624Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

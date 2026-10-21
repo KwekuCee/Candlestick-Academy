@@ -9,10 +9,12 @@ import {
   OFFICIAL_PARTNER_LINK,
   PartnerTransferTicketResult,
   checkExnessAccountDeposit,
+  checkUsernameAvailability,
   connectExistingExnessClient,
   getStoredConfig,
   getStoredCurrentUser,
   getStoredRoster,
+  normalizeUsername,
   refreshRosterFromSupabase,
   saveStoredCurrentUser,
   saveStoredRoster,
@@ -135,6 +137,13 @@ export function OnboardingFlow() {
 
   // Step 2 State: Create Candlesticks Academy Account
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{
+    available: boolean;
+    normalized: string;
+    reason: string;
+  } | null>(null);
   const [country, setCountry] = useState("Ghana");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -153,6 +162,7 @@ export function OnboardingFlow() {
     const existing = getStoredCurrentUser();
     if (existing && existing.fullName && existing.fullName !== "Kwame Mensah") {
       setFullName(existing.fullName);
+      if (existing.username) setUsername(existing.username);
       setCountry(existing.country || "Ghana");
       setEmail(existing.email);
       if (existing.exnessEmail) {
@@ -163,6 +173,29 @@ export function OnboardingFlow() {
       }
     }
   }, []);
+
+  // Live username availability check as client types
+  useEffect(() => {
+    const clean = normalizeUsername(username);
+    if (!clean) {
+      setUsernameStatus(null);
+      setCheckingUsername(false);
+      return;
+    }
+    let active = true;
+    setCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(clean, email, matchedDbStudent?.id);
+      if (active) {
+        setUsernameStatus(res);
+        setCheckingUsername(false);
+      }
+    }, 220);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [username, email, matchedDbStudent?.id]);
 
   function handleCopyPartnerId() {
     navigator.clipboard.writeText(partnerCode);
@@ -292,12 +325,23 @@ export function OnboardingFlow() {
   }
 
   // Step 2: Create Candlesticks Academy Account after Referral Approval
-  function handleCreateAcademyAccount(e: FormEvent) {
+  async function handleCreateAcademyAccount(e: FormEvent) {
     e.preventDefault();
     setFormError("");
 
     if (!fullName.trim()) {
       setFormError("Please enter your full name.");
+      return;
+    }
+    const cleanUser = normalizeUsername(username);
+    if (!cleanUser) {
+      setFormError("Please choose a username so you can log in with either your email or username.");
+      return;
+    }
+    const availability = await checkUsernameAvailability(cleanUser, email.trim(), matchedDbStudent?.id);
+    setUsernameStatus(availability);
+    if (!availability.available) {
+      setFormError(availability.reason);
       return;
     }
     if (!email.trim() || !email.includes("@")) {
@@ -318,6 +362,8 @@ export function OnboardingFlow() {
     const updatedUser: ExnessStudent = {
       ...user,
       id: matchedDbStudent?.id || `std-${Date.now()}`,
+      username: availability.normalized,
+      accountPassword: password,
       fullName: fullName.trim(),
       country,
       email: email.trim(),
@@ -1066,18 +1112,70 @@ export function OnboardingFlow() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
-                  Email Address <span className="text-[#ffde02]">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full bg-[#12151b] border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-[#5d6778] focus:outline-none focus:border-[#ffde02] focus:ring-1 focus:ring-[#ffde02] text-sm transition"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+                    Choose a Username <span className="text-[#ffde02]">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#ffde02]">
+                      @
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.replace(/^@+/, ""))}
+                      placeholder="kwame_fx"
+                      className={`w-full bg-[#12151b] border rounded-xl pl-8 pr-4 py-3.5 text-white placeholder-[#5d6778] focus:outline-none text-sm font-mono transition ${
+                        usernameStatus
+                          ? usernameStatus.available
+                            ? "border-emerald-500/60 focus:border-emerald-400"
+                            : "border-red-500/70 focus:border-red-400"
+                          : "border-white/10 focus:border-[#ffde02] focus:ring-1 focus:ring-[#ffde02]"
+                      }`}
+                    />
+                  </div>
+                  {checkingUsername && (
+                    <p className="text-[11px] font-mono text-[#9aa4b5] mt-1.5 flex items-center gap-1.5">
+                      <RefreshCw size={12} className="animate-spin text-[#ffde02]" />
+                      Checking username availability...
+                    </p>
+                  )}
+                  {!checkingUsername && usernameStatus && (
+                    <div
+                      className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border ${
+                        usernameStatus.available
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/35"
+                          : "bg-red-500/15 text-red-300 border-red-500/35"
+                      }`}
+                    >
+                      {usernameStatus.available ? (
+                        <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle size={13} className="text-red-400 shrink-0" />
+                      )}
+                      <span>
+                        {usernameStatus.available ? "Available: " : "Not Available: "}
+                        {usernameStatus.reason}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11.5px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-2">
+                    Email Address <span className="text-[#ffde02]">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full bg-[#12151b] border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-[#5d6778] focus:outline-none focus:border-[#ffde02] focus:ring-1 focus:ring-[#ffde02] text-sm transition"
+                  />
+                </div>
               </div>
 
               {/* Password with Peek Icon */}

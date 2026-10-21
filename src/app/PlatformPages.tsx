@@ -10,11 +10,15 @@ import {
   SUPABASE_PROJECT_REF,
   SUPABASE_PROJECT_URL,
   SUPABASE_SCHEMA_SQL,
+  authenticatePortalLogin,
   checkExnessAccountDeposit,
+  checkUsernameAvailability,
   getStoredConfig,
   getStoredCurrentUser,
   getStoredRoster,
+  isMasterAdminAuthenticated,
   logoutCurrentUser,
+  normalizeUsername,
   pushSchemaToSupabaseManagementApi,
   refreshRosterFromSupabase,
   registerApprovedTradingAccountInSupabase,
@@ -596,6 +600,13 @@ export function PortalLayout() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
 
+  // Protect /admin/* routes so only authenticated `master` admin sessions can access them
+  useEffect(() => {
+    if (admin && !isMasterAdminAuthenticated()) {
+      nav("/login", { replace: true });
+    }
+  }, [admin, loc.pathname, nav]);
+
   // Load client notifications & audit log alerts pertaining to this client
   useEffect(() => {
     const targetEmail = admin ? "ALL" : student.email;
@@ -731,10 +742,18 @@ export function PortalLayout() {
               <StudentAvatarBadge avatarUrl={student.avatarUrl} name={student.fullName} />
             )}
             <b>
-              {admin ? "Pastor Mike" : student.fullName || "Registered Trader"}
+              {admin ? "Pastor Mike (@master)" : student.fullName || "Registered Trader"}
               <small>
                 {admin
                   ? "Founder & Lead Mentor"
+                  : student.username
+                  ? `@${student.username} · ${
+                      student.depositVerified && student.depositAmount >= 50
+                        ? "Funded ($50+)"
+                        : student.partnerLinked
+                        ? "Partner Linked"
+                        : "Unlinked"
+                    }`
                   : student.depositVerified && student.depositAmount >= 50
                   ? "Verified & Funded ($50+)"
                   : student.partnerLinked
@@ -944,24 +963,25 @@ export function RegisterPage() {
 export function LoginPage() {
   const nav = useNavigate();
   const [loginInput, setLoginInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
-    const cleaned = loginInput.trim().toLowerCase();
-    if (cleaned === "mike.vinci77@gmail.com" || cleaned === "admin@candlesticks.ac") {
-      nav("/admin");
+    setSubmitting(true);
+    const res = await authenticatePortalLogin(loginInput, passwordInput);
+    setSubmitting(false);
+
+    if (!res.success) {
+      setErrorMsg(res.message);
       return;
     }
 
-    const roster = await refreshRosterFromSupabase();
-    const match = roster.find(
-      (s) => s.email.toLowerCase() === cleaned || (s.exnessId && s.exnessId.trim() === loginInput.trim())
-    );
-    if (match) {
-      saveStoredCurrentUser(match);
-      nav("/dashboard");
+    if (res.role === "admin") {
+      nav("/admin");
     } else {
       nav("/dashboard");
     }
@@ -972,23 +992,48 @@ export function LoginPage() {
       <form className="auth-form login" onSubmit={handleLogin}>
         <p className="p-eyebrow">WELCOME BACK</p>
         <h1>Continue your journey</h1>
-        <p>Log in with your registered email or Exness Trading Account ID to access your dashboard.</p>
+        <p>
+          Log in with your registered <strong>Email</strong> or <strong>Username</strong> and password to access your trading terminal.
+        </p>
         <label>
-          Email or Exness Trading Account ID
+          Email or Username
           <input
             required
             value={loginInput}
             onChange={(e) => setLoginInput(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="you@example.com or @username"
           />
         </label>
         <label>
-          Password<a>Forgot password?</a>
-          <input required type="password" placeholder="Enter your password" />
+          Password<Link to="/onboarding">Need an account?</Link>
+          <div className="relative">
+            <input
+              required
+              type={showPassword ? "text" : "password"}
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Enter your password"
+              className="pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffde02] transition p-1 cursor-pointer bg-transparent border-0"
+              style={{ marginTop: "4px" }}
+            >
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
         </label>
-        {errorMsg && <p className="text-xs text-red-400">{errorMsg}</p>}
-        <Button type="submit">
-          Log in <Icon name="arrow" />
+        {errorMsg && (
+          <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 flex items-start gap-2">
+            <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-400" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Verifying Credentials..." : "Log in"} <Icon name="arrow" />
         </Button>
         <span className="auth-switch">
           New here? <Link to="/onboarding">Create an account</Link>
@@ -1532,11 +1577,23 @@ export function SettingsPage() {
   const student = useCurrentStudent();
   const config = getStoredConfig();
   const [fullName, setFullName] = useState(student.fullName);
+  const [username, setUsername] = useState(student.username || "");
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{
+    available: boolean;
+    normalized: string;
+    reason: string;
+  } | null>(null);
+  const [accountPassword, setAccountPassword] = useState(student.accountPassword || "");
+  const [showAccountPassword, setShowAccountPassword] = useState(false);
   const [email, setEmail] = useState(student.email);
   const [country, setCountry] = useState(student.country || "Ghana");
   const [phone, setPhone] = useState(student.phone || "");
   const [telegramHandle, setTelegramHandle] = useState(student.telegramHandle || "");
   const [exnessId, setExnessId] = useState(student.exnessId);
+
+  // Active section scroll-spy state for sticky settings navigation
+  const [activeSection, setActiveSection] = useState<string>("profile");
 
   // Trading Risk Profile & Preferences
   const [preferredSession, setPreferredSession] = useState(
@@ -1566,6 +1623,7 @@ export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [ticketGuideOpen, setTicketGuideOpen] = useState(false);
 
   // Direct Mentor Q&A state
@@ -1581,6 +1639,72 @@ export function SettingsPage() {
     void fetchMentorMessagesFromDb(student.email).then(setMentorMessages);
   }, [student.email]);
 
+  // Sync local state if student updates
+  useEffect(() => {
+    if (student.username && !username) {
+      setUsername(student.username);
+    }
+    if (student.accountPassword && !accountPassword) {
+      setAccountPassword(student.accountPassword);
+    }
+  }, [student.username, student.accountPassword]);
+
+  // Live username availability check in Settings
+  useEffect(() => {
+    const clean = normalizeUsername(username);
+    if (!clean) {
+      setUsernameStatus(null);
+      setCheckingUsername(false);
+      return;
+    }
+    let active = true;
+    setCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(clean, student.email, student.id);
+      if (active) {
+        setUsernameStatus(res);
+        setCheckingUsername(false);
+      }
+    }, 220);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [username, student.email, student.id]);
+
+  // Scroll-spy observer so the sticky settings menu highlights the section in view as the user scrolls
+  useEffect(() => {
+    const sectionIds = [
+      "profile",
+      "risk-profile",
+      "account",
+      "mentor-qa",
+      "alerts",
+      "ticket-guide",
+      "sql-schema",
+    ];
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      let current = sectionIds[0];
+      for (const id of sectionIds) {
+        const el = document.getElementById(id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 160) {
+            current = id;
+          }
+        }
+      }
+      if (scrollY + window.innerHeight >= document.documentElement.scrollHeight - 40) {
+        current = sectionIds[sectionIds.length - 1];
+      }
+      setActiveSection(current);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1592,9 +1716,26 @@ export function SettingsPage() {
     setTimeout(() => setAvatarFeedback(null), 4000);
   }
 
-  function saveProfile() {
+  async function saveProfile() {
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    let resolvedUsername = student.username;
+    const cleanUser = normalizeUsername(username);
+    if (cleanUser) {
+      const check = await checkUsernameAvailability(cleanUser, student.email, student.id);
+      setUsernameStatus(check);
+      if (!check.available) {
+        setSaveError(check.reason);
+        return;
+      }
+      resolvedUsername = check.normalized;
+    }
+
     const updated: ExnessStudent = {
       ...student,
+      username: resolvedUsername,
+      accountPassword: accountPassword.trim() || student.accountPassword,
       fullName: fullName.trim(),
       email: email.trim(),
       country,
@@ -1610,14 +1751,16 @@ export function SettingsPage() {
       notifySessions,
       autoCopySignals,
     };
-    saveStoredCurrentUser(updated);
+    saveStoredCurrentUser(updated, updated.accountPassword);
 
     const roster = getStoredRoster();
     const idx = roster.findIndex((s) => s.email.toLowerCase() === student.email.toLowerCase());
     if (idx >= 0) {
       roster[idx] = updated;
-      saveStoredRoster(roster);
+    } else {
+      roster.unshift(updated);
     }
+    saveStoredRoster(roster);
 
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
@@ -1641,29 +1784,49 @@ export function SettingsPage() {
     setMentorMessages(updated);
   }
 
+  const navItems: Array<[string, string]> = [
+    ["profile", "Profile & Username"],
+    ["risk-profile", "Risk & Session"],
+    ["account", "Linked Exness"],
+    ["mentor-qa", "Direct Mentor Q&A"],
+    ["alerts", "Notifications"],
+    ["ticket-guide", "Partner Transfer"],
+    ["sql-schema", "Database Schema"],
+  ];
+
   return (
     <>
       <Header
         eyebrow="CLIENT ACCOUNT & PREFERENCES"
-        title="Profile, Risk Terminal & Settings"
-        copy="Upload your profile photo, configure your risk parameters, message Pastor Mike, and manage your linked Exness account."
+        title="Profile, Username, Risk Terminal & Settings"
+        copy="Set your unique login @username and password, upload your profile photo, configure your risk parameters, and manage your linked Exness account."
       />
       <div className="settings-grid">
         <nav>
-          <a href="#profile">Profile &amp; Photo</a>
-          <a href="#risk-profile">Risk &amp; Session</a>
-          <a href="#account">Linked Exness</a>
-          <a href="#mentor-qa">Direct Mentor Q&amp;A</a>
-          <a href="#alerts">Notifications</a>
-          <a href="#ticket-guide">Partner Transfer</a>
-          <a href="#sql-schema">Database Schema</a>
+          {navItems.map(([id, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className={activeSection === id ? "active" : ""}
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveSection(id);
+                const el = document.getElementById(id);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }}
+            >
+              {label}
+            </a>
+          ))}
         </nav>
         <div>
-          {/* 1. Profile & Photo Upload Card */}
+          {/* 1. Profile, Username & Photo Upload Card */}
           <Card className="settings-card" id="profile">
-            <h2>Profile &amp; Avatar Photo</h2>
+            <h2>Profile, Login Username &amp; Avatar Photo</h2>
             <p>
-              Upload your profile image. Your photo is synced to Supabase Storage (<code>student-avatars</code>) and visible to Pastor Mike in the Admin Console.
+              Set your unique <code>@username</code> to log in with either your username or email address, and upload your profile photo (synced to Supabase Storage &amp; visible beside the topbar alert bell).
             </p>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#141821] border border-white/10 my-4">
               <div className="flex items-center gap-4">
@@ -1673,8 +1836,15 @@ export function SettingsPage() {
                   sizeClass="w-16 h-16 text-lg"
                 />
                 <div>
-                  <b className="text-white text-base block">{student.fullName}</b>
-                  <small className="text-[#8c94a2] text-xs block">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <b className="text-white text-base">{student.fullName}</b>
+                    {student.username && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#ffde02]/15 border border-[#ffde02]/35 text-[11px] font-mono font-bold text-[#ffde02]">
+                        @{student.username}
+                      </span>
+                    )}
+                  </div>
+                  <small className="text-[#8c94a2] text-xs block mt-0.5">
                     {student.email} · {student.country}
                   </small>
                   {avatarFeedback && (
@@ -1699,6 +1869,98 @@ export function SettingsPage() {
                   <Camera size={15} />
                   {uploadingAvatar ? "Uploading Photo..." : "Upload Profile Photo"}
                 </button>
+              </div>
+            </div>
+
+            {/* Username & Password Setup Box with Real-Time Availability Check */}
+            <div className="p-4 rounded-2xl bg-[#11151e] border border-[#ffde02]/30 mb-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#ffde02]">
+                    LOGIN CREDENTIALS · EMAIL OR USERNAME
+                  </span>
+                  <h3 className="text-sm font-bold text-white mt-0.5">
+                    Your Unique Login Username &amp; Password
+                  </h3>
+                </div>
+                {student.username && (
+                  <span className="text-[11px] font-mono text-emerald-400">
+                    Active Login ID: <strong>@{student.username}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="form-grid">
+                <div>
+                  <label>
+                    Login Username (@username)
+                    <div className="relative">
+                      <span
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#ffde02]"
+                        style={{ marginTop: "4px" }}
+                      >
+                        @
+                      </span>
+                      <input
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value.replace(/^@+/, ""))}
+                        placeholder="choose_username"
+                        style={{ paddingLeft: "28px" }}
+                      />
+                    </div>
+                  </label>
+                  {checkingUsername && (
+                    <span className="text-[11px] font-mono text-[#9aa4b5] mt-1.5 flex items-center gap-1.5">
+                      <RefreshCw size={12} className="animate-spin text-[#ffde02]" />
+                      Checking availability...
+                    </span>
+                  )}
+                  {!checkingUsername && usernameStatus && (
+                    <div
+                      className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border ${
+                        usernameStatus.available
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/35"
+                          : "bg-red-500/15 text-red-300 border-red-500/35"
+                      }`}
+                    >
+                      {usernameStatus.available ? (
+                        <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle size={13} className="text-red-400 shrink-0" />
+                      )}
+                      <span>
+                        {usernameStatus.available ? "Available: " : "Not Available: "}
+                        {usernameStatus.reason}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label>
+                    Login Password
+                    <div className="relative">
+                      <input
+                        type={showAccountPassword ? "text" : "password"}
+                        value={accountPassword}
+                        onChange={(e) => setAccountPassword(e.target.value)}
+                        placeholder="Set or update your login password"
+                        style={{ paddingRight: "40px" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountPassword(!showAccountPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffde02] bg-transparent border-0 cursor-pointer p-1"
+                        style={{ marginTop: "4px" }}
+                      >
+                        {showAccountPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </label>
+                  <span className="text-[11px] text-[#8c94a2] mt-1.5 block">
+                    Use this password with your <strong>@username</strong> or <strong>email</strong> on the Sign In page.
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1740,8 +2002,14 @@ export function SettingsPage() {
                 />
               </label>
             </div>
+            {saveError && (
+              <div className="mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                <AlertCircle size={15} className="text-red-400 shrink-0" />
+                <span>{saveError}</span>
+              </div>
+            )}
             <div className="flex items-center gap-4 mt-5">
-              <Button onClick={saveProfile}>Save Profile &amp; Sync to Database</Button>
+              <Button onClick={() => void saveProfile()}>Save Profile &amp; Sync to Database</Button>
               {saveSuccess && (
                 <span className="text-xs text-green-400 flex items-center gap-1">
                   <CheckCircle2 size={14} /> Saved &amp; synced to Supabase!
@@ -5161,7 +5429,14 @@ export function StudentRosterPage() {
                     <div className="student-cell">
                       <StudentAvatarBadge avatarUrl={s.avatarUrl} name={s.fullName} />
                       <span>
-                        <b>{s.fullName}</b>
+                        <b>
+                          {s.fullName}{" "}
+                          {s.username && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#ffde02]/15 text-[#ffde02] font-mono text-[10px]">
+                              @{s.username}
+                            </span>
+                          )}
+                        </b>
                         <small>{s.email}</small>
                       </span>
                     </div>
