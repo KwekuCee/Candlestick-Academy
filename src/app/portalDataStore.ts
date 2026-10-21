@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS public.certificate_templates (
   name_x_pct NUMERIC(5,2) NOT NULL DEFAULT 50.00,
   name_y_pct NUMERIC(5,2) NOT NULL DEFAULT 48.00,
   font_size INTEGER NOT NULL DEFAULT 42,
-  font_color TEXT NOT NULL DEFAULT '#FFDE02',
+  font_color TEXT NOT NULL DEFAULT '#ffb600',
   show_course_title BOOLEAN NOT NULL DEFAULT TRUE,
   course_y_pct NUMERIC(5,2) NOT NULL DEFAULT 60.00,
   show_issue_date BOOLEAN NOT NULL DEFAULT TRUE,
@@ -2146,7 +2146,7 @@ const DEFAULT_CERT_TEMPLATE: CertificateTemplateConfig = {
   nameXPct: 50,
   nameYPct: 48,
   fontSize: 44,
-  fontColor: "#FFDE02",
+  fontColor: "#ffb600",
   showCourseTitle: true,
   courseYPct: 62,
   showIssueDate: true,
@@ -2183,7 +2183,7 @@ export async function fetchCertificateTemplateFromDb(): Promise<CertificateTempl
         nameXPct: Number(data.name_x_pct ?? 50),
         nameYPct: Number(data.name_y_pct ?? 48),
         fontSize: Number(data.font_size ?? 44),
-        fontColor: String(data.font_color || "#FFDE02"),
+        fontColor: String(data.font_color || "#ffb600"),
         showCourseTitle: Boolean(data.show_course_title ?? true),
         courseYPct: Number(data.course_y_pct ?? 62),
         showIssueDate: Boolean(data.show_issue_date ?? true),
@@ -2304,15 +2304,15 @@ export async function renderPersonalizedCertificateDataUrl(params: {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Outer & Inner Gold Borders
-    ctx.strokeStyle = "#FFDE02";
+    ctx.strokeStyle = "#ffb600";
     ctx.lineWidth = 6;
     ctx.strokeRect(48, 48, canvas.width - 96, canvas.height - 96);
-    ctx.strokeStyle = "rgba(255, 222, 2, 0.35)";
+    ctx.strokeStyle = "rgba(255, 182, 0, 0.35)";
     ctx.lineWidth = 2;
     ctx.strokeRect(68, 68, canvas.width - 136, canvas.height - 136);
 
     // Header
-    ctx.fillStyle = "#FFDE02";
+    ctx.fillStyle = "#ffb600";
     ctx.font = "bold 24px monospace";
     ctx.textAlign = "center";
     ctx.fillText("CANDLESTICKS TRADING ACADEMY · VERIFIED CREDENTIAL", canvas.width / 2, 180);
@@ -2329,7 +2329,7 @@ export async function renderPersonalizedCertificateDataUrl(params: {
   // Draw Student Name at Admin's configured X/Y percentage coordinates
   const nameX = (template.nameXPct / 100) * canvas.width;
   const nameY = (template.nameYPct / 100) * canvas.height;
-  ctx.fillStyle = template.fontColor || "#FFDE02";
+  ctx.fillStyle = template.fontColor || "#ffb600";
   ctx.font = `bold ${Math.round(template.fontSize * 1.45)}px Georgia, serif`;
   ctx.textAlign = "center";
   ctx.fillText(params.studentName || "Verified Trader", nameX, nameY);

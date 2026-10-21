@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { BrandLogo } from "./app/BrandLogo";
 
 type IconName =
   | "arrow"
@@ -53,19 +54,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 function Logo() {
-  return (
-    <a className="logo" href="#top" aria-label="Candlesticks Academy home">
-      <span className="logo-mark" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
-      <span>
-        CANDLESTICKS
-        <small>ACADEMY</small>
-      </span>
-    </a>
-  );
+  return <BrandLogo href="#top" size="md" />;
 }
 
 interface Candle {
@@ -346,9 +335,9 @@ function MarketCard() {
           <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="none" aria-label="Live 1-minute zoomed out EUR USD candlestick chart">
             <defs>
               <linearGradient id="liveAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ffde02" stopOpacity="0.22" />
-                <stop offset="60%" stopColor="#ffde02" stopOpacity="0.04" />
-                <stop offset="100%" stopColor="#ffde02" stopOpacity="0" />
+                <stop offset="0%" stopColor="#ffb600" stopOpacity="0.22" />
+                <stop offset="60%" stopColor="#ffb600" stopOpacity="0.04" />
+                <stop offset="100%" stopColor="#ffb600" stopOpacity="0" />
               </linearGradient>
               <filter id="liveLineGlow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="2.5" result="blur" />
@@ -386,7 +375,7 @@ function MarketCard() {
 
             {/* Glowing Trend Area & Path */}
             <path className="trend-area" d={areaPathD} fill="url(#liveAreaGrad)" />
-            <path className="trend-line" d={trendPathD} filter="url(#liveLineGlow)" stroke="#ffde02" strokeWidth="1.8" fill="none" opacity="0.8" />
+            <path className="trend-line" d={trendPathD} filter="url(#liveLineGlow)" stroke="#ffb600" strokeWidth="1.8" fill="none" opacity="0.8" />
 
             {/* Moving Average 9 EMA Curve */}
             {showIndicators && (
@@ -459,7 +448,7 @@ function MarketCard() {
                       cx={cx}
                       cy={getY(c.close)}
                       r="4"
-                      fill="#ffde02"
+                      fill="#ffb600"
                       className="live-candle-pulse"
                     />
                   )}
@@ -492,7 +481,7 @@ function MarketCard() {
                     x={cx}
                     y={svgHeight - 10}
                     textAnchor="middle"
-                    fill={isLast ? "#ffde02" : "#717985"}
+                    fill={isLast ? "#ffb600" : "#717985"}
                     fontSize="8.5"
                     fontFamily="'DM Mono', monospace"
                     fontWeight={isLast ? "600" : "400"}

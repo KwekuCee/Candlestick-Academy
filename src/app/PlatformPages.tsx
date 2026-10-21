@@ -135,7 +135,8 @@ import {
   Video as VideoIcon,
   Zap,
 } from "lucide-react";
-import { MobileCandlestickSplash, PWAInstallButton } from "./PWAInstallPrompt";
+import { PWAInstallButton } from "./PWAInstallPrompt";
+import { BrandLogo } from "./BrandLogo";
 
 type IconName =
   | "admin"
@@ -281,18 +282,7 @@ function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
 }
 
 function Logo() {
-  return (
-    <Link className="portal-logo" to="/">
-      <span className="portal-logo-mark">
-        <i />
-        <i />
-        <i />
-      </span>
-      <span>
-        CANDLESTICKS<small>ACADEMY</small>
-      </span>
-    </Link>
-  );
+  return <BrandLogo to="/" size="md" />;
 }
 
 function Badge({
@@ -410,13 +400,13 @@ function StudentAvatarBadge({
         src={avatarUrl}
         alt={name}
         referrerPolicy="no-referrer"
-        className={`${sizeClass} rounded-full object-cover border border-[#ffde02]/50 shrink-0`}
+        className={`${sizeClass} rounded-full object-cover border border-[#ffb600]/50 shrink-0`}
       />
     );
   }
   return (
     <span
-      className={`${sizeClass} rounded-full bg-[#ffde02]/15 text-[#ffde02] border border-[#ffde02]/30 font-extrabold flex items-center justify-center shrink-0`}
+      className={`${sizeClass} rounded-full bg-[#ffb600]/15 text-[#ffb600] border border-[#ffb600]/30 font-extrabold flex items-center justify-center shrink-0`}
     >
       {initials}
     </span>
@@ -491,14 +481,14 @@ function DepositGateNotice({
   }
 
   return (
-    <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-[#1c2029] to-[#12151b] border-2 border-[#ffde02]/30 shadow-2xl my-6">
+    <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-[#1c2029] to-[#12151b] border-2 border-[#ffb600]/30 shadow-2xl my-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <span className="w-12 h-12 rounded-xl bg-[#ffde02]/15 text-[#ffde02] flex items-center justify-center shrink-0">
+          <span className="w-12 h-12 rounded-xl bg-[#ffb600]/15 text-[#ffb600] flex items-center justify-center shrink-0">
             <Lock size={22} />
           </span>
           <div>
-            <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
+            <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffb600] bg-[#ffb600]/10 px-2 py-0.5 rounded">
               $50 Exness Deposit Required
             </span>
             <h3 className="text-xl font-bold text-white mt-1">{featureTitle}</h3>
@@ -517,7 +507,7 @@ function DepositGateNotice({
       <div className="mt-4">
         <div className="w-full bg-[#0d0f12] h-2.5 rounded-full overflow-hidden border border-white/10">
           <div
-            className="h-full bg-gradient-to-r from-[#ffe540] to-[#ffde02] rounded-full transition-all duration-500"
+            className="h-full bg-gradient-to-r from-[#ffc833] to-[#ffb600] rounded-full transition-all duration-500"
             style={{ width: `${Math.min(100, (student.depositAmount / 50) * 100)}%` }}
           />
         </div>
@@ -529,7 +519,7 @@ function DepositGateNotice({
             href="https://my.exness.com/pa/deposit"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#ffde02] text-black text-xs font-bold hover:bg-[#ffe540] transition"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#ffb600] text-black text-xs font-bold hover:bg-[#ffc833] transition"
           >
             Deposit on Exness <ExternalLink size={13} />
           </a>
@@ -547,7 +537,7 @@ function DepositGateNotice({
         <button
           type="button"
           onClick={() => handleSimulateOrCheck(50)}
-          className="text-xs text-[#ffde02] hover:underline cursor-pointer"
+          className="text-xs text-[#ffb600] hover:underline cursor-pointer"
         >
           ⚡ Verify $50 Deposit Status
         </button>
@@ -555,7 +545,7 @@ function DepositGateNotice({
 
       {msg && (
         <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#c5cdd8] flex items-center gap-2">
-          <CheckCircle2 size={15} className="text-[#ffde02]" />
+          <CheckCircle2 size={15} className="text-[#ffb600]" />
           <span>{msg}</span>
         </div>
       )}
@@ -631,25 +621,6 @@ export function PortalLayout() {
       return next;
     });
   }
-
-  // 3-Second Alternating 3-Candlesticks Mobile App Loading Screen
-  const [showMobileSplash, setShowMobileSplash] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const isMobileViewport =
-      window.innerWidth <= 860 ||
-      /android|iphone|ipad|ipod|mobile/i.test(window.navigator.userAgent);
-    if (!isMobileViewport) return false;
-    try {
-      const seen = sessionStorage.getItem("candlesticks_mobile_splash_seen");
-      if (!seen) {
-        sessionStorage.setItem("candlesticks_mobile_splash_seen", "1");
-        return true;
-      }
-    } catch {
-      return true;
-    }
-    return false;
-  });
 
   // Interactive Alert Bell Popover state
   const [bellOpen, setBellOpen] = useState(false);
@@ -756,16 +727,9 @@ export function PortalLayout() {
 
   return (
     <div className={`portal ${portalTheme === "light" ? "theme-light" : "theme-dark"}`}>
-      {showMobileSplash && (
-        <MobileCandlestickSplash
-          theme={portalTheme}
-          onFinish={() => setShowMobileSplash(false)}
-        />
-      )}
-
       <aside className={`portal-sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-logo">
-          <Logo />
+          <BrandLogo to="/" size="md" />
           <button onClick={() => setOpen(false)}>
             <Icon name="close" />
           </button>
@@ -797,7 +761,7 @@ export function PortalLayout() {
             onClick={togglePortalTheme}
             className="h-[44px] px-[13px] rounded-[12px] flex items-center gap-[13px] text-[#a4abb6] hover:text-white hover:bg-white/10 text-[13.5px] font-semibold transition cursor-pointer w-full text-left border-0 bg-transparent"
           >
-            {portalTheme === "dark" ? <Sun size={18} className="text-[#ffde02]" /> : <Moon size={18} />}
+            {portalTheme === "dark" ? <Sun size={18} className="text-[#ffb600]" /> : <Moon size={18} />}
             <span>{portalTheme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme"}</span>
           </button>
           <button
@@ -813,7 +777,7 @@ export function PortalLayout() {
               <img
                 src="/ceo.png"
                 alt="Pastor Mike"
-                className="w-9 h-9 rounded-full object-cover border border-[#ffde02]/50 shrink-0"
+                className="w-9 h-9 rounded-full object-cover border border-[#ffb600]/50 shrink-0"
               />
             ) : (
               <StudentAvatarBadge avatarUrl={student.avatarUrl} name={student.fullName} />
@@ -849,7 +813,7 @@ export function PortalLayout() {
               <Icon name="menu" />
             </button>
             <div className="mobile-app-brand">
-              <Logo />
+              <BrandLogo to="/" variant="mark-only" size="sm" />
             </div>
             <form onSubmit={handleSearchSubmit} className="portal-search">
               <Icon name="search" />
@@ -875,7 +839,7 @@ export function PortalLayout() {
             >
               {portalTheme === "dark" ? (
                 <>
-                  <Sun size={14} className="text-[#ffde02]" />
+                  <Sun size={14} className="text-[#ffb600]" />
                   <span className="hidden md:inline">Light</span>
                 </>
               ) : (
@@ -906,7 +870,7 @@ export function PortalLayout() {
                 <div className="bell-popover absolute right-0 top-full mt-2.5 w-[330px] sm:w-[390px] rounded-2xl bg-[#11151f] border border-white/15 shadow-2xl z-50 overflow-hidden">
                   <div className="px-4 py-3.5 bg-[#161b26] border-b border-white/10 flex items-center justify-between gap-2">
                     <div>
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] block">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] block">
                         CLIENT AUDIT &amp; TRADE ALERTS
                       </span>
                       <h4 className="text-xs font-extrabold text-white mt-0.5">
@@ -917,7 +881,7 @@ export function PortalLayout() {
                       <button
                         type="button"
                         onClick={() => void handleMarkAllRead()}
-                        className="px-2.5 py-1 rounded-lg bg-[#ffde02]/15 hover:bg-[#ffde02]/25 border border-[#ffde02]/30 text-[10px] font-bold text-[#ffde02] transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-[#ffb600]/15 hover:bg-[#ffb600]/25 border border-[#ffb600]/30 text-[10px] font-bold text-[#ffb600] transition cursor-pointer"
                       >
                         Mark all as read
                       </button>
@@ -942,7 +906,7 @@ export function PortalLayout() {
                           className={`w-full text-left px-4 py-3 transition flex items-start gap-3 cursor-pointer ${
                             item.isRead
                               ? "bg-transparent hover:bg-white/5 opacity-75"
-                              : "bg-[#ffde02]/[0.06] hover:bg-[#ffde02]/[0.12]"
+                              : "bg-[#ffb600]/[0.06] hover:bg-[#ffb600]/[0.12]"
                           }`}
                         >
                           <span
@@ -952,7 +916,7 @@ export function PortalLayout() {
                                 : item.category === "tp_hit"
                                 ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
                                 : item.category === "trade"
-                                ? "bg-[#ffde02] shadow-[0_0_8px_#ffde02]"
+                                ? "bg-[#ffb600] shadow-[0_0_8px_#ffb600]"
                                 : "bg-sky-400"
                             }`}
                           />
@@ -976,7 +940,7 @@ export function PortalLayout() {
                                 {item.category.replace("_", " ")}
                               </span>
                               {!item.isRead && (
-                                <span className="text-[10px] font-bold text-[#ffde02]">
+                                <span className="text-[10px] font-bold text-[#ffb600]">
                                   Click to mark read →
                                 </span>
                               )}
@@ -995,7 +959,7 @@ export function PortalLayout() {
                 <img
                   src="/ceo.png"
                   alt="Pastor Mike"
-                  className="w-9 h-9 rounded-full object-cover border border-[#ffde02]/50"
+                  className="w-9 h-9 rounded-full object-cover border border-[#ffb600]/50"
                 />
               ) : (
                 <StudentAvatarBadge avatarUrl={student.avatarUrl} name={student.fullName} />
@@ -1104,6 +1068,7 @@ export function LoginPage() {
       return;
     }
 
+    window.dispatchEvent(new Event("candlesticks_trigger_opener"));
     if (res.role === "admin") {
       nav("/admin");
     } else {
@@ -1143,7 +1108,7 @@ export function LoginPage() {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffde02] transition p-1 cursor-pointer bg-transparent border-0"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffb600] transition p-1 cursor-pointer bg-transparent border-0"
               style={{ marginTop: "4px" }}
             >
               {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -1279,7 +1244,7 @@ export function DashboardPage() {
           />
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02]">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
                 {todayFormatted}
               </span>
               <span className="text-[10px] font-mono text-[#7f8a9d]">•</span>
@@ -1333,7 +1298,7 @@ export function DashboardPage() {
             </div>
             <button
               onClick={() => nav("/onboarding")}
-              className="px-5 py-2.5 rounded-full bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider hover:bg-[#ffe540] transition shrink-0 cursor-pointer"
+              className="px-5 py-2.5 rounded-full bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider hover:bg-[#ffc833] transition shrink-0 cursor-pointer"
             >
               Complete Exness Link <ArrowRight size={14} className="inline ml-1" />
             </button>
@@ -1367,7 +1332,7 @@ export function DashboardPage() {
               href="https://my.exness.com/pa/deposit"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2.5 rounded-full bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider text-center hover:bg-[#ffe540] transition"
+              className="px-4 py-2.5 rounded-full bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider text-center hover:bg-[#ffc833] transition"
             >
               Deposit $50 on Exness ↗
             </a>
@@ -1379,7 +1344,7 @@ export function DashboardPage() {
       )}
 
       {checkMsg && (
-        <div className="mb-5 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#ffde02] flex items-center gap-2">
+        <div className="mb-5 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#ffb600] flex items-center gap-2">
           <CheckCircle2 size={15} />
           <span>{checkMsg}</span>
         </div>
@@ -1453,7 +1418,7 @@ export function DashboardPage() {
                 </Button>
                 <Link
                   to={`/quiz/${nextCourse?.slug || "forex-foundations"}`}
-                  className="px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-bold text-[#ffde02] transition"
+                  className="px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-bold text-[#ffb600] transition"
                 >
                   Take Course Quiz ({nextCourse?.title || "Foundations"}) →
                 </Link>
@@ -1463,7 +1428,7 @@ export function DashboardPage() {
                 onClick={() => nav("/courses")}
                 className="px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer"
               >
-                <Lock size={13} className="text-[#ffde02]" /> View Unlocking Requirement
+                <Lock size={13} className="text-[#ffb600]" /> View Unlocking Requirement
               </button>
             )}
           </div>
@@ -1507,7 +1472,7 @@ export function DashboardPage() {
                     onClick={() => nav("/sessions")}
                     className="mt-3 px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer"
                   >
-                    <Lock size={13} className="text-[#ffde02]" /> Locked ($50 Deposit Required)
+                    <Lock size={13} className="text-[#ffb600]" /> Locked ($50 Deposit Required)
                   </button>
                 )}
               </>
@@ -1519,7 +1484,7 @@ export function DashboardPage() {
                 </p>
                 <Link
                   to="/sessions"
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline pt-1"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffb600] hover:underline pt-1"
                 >
                   Open Live Sessions Room <ArrowRight size={13} />
                 </Link>
@@ -1593,7 +1558,7 @@ export function DashboardPage() {
                     <span>SL/TP levels hidden</span>
                     <Link
                       to="/signals"
-                      className="text-[#ffde02] hover:underline flex items-center gap-1 font-bold"
+                      className="text-[#ffb600] hover:underline flex items-center gap-1 font-bold"
                     >
                       Unlock with $50 Deposit <ArrowRight size={13} />
                     </Link>
@@ -1608,7 +1573,7 @@ export function DashboardPage() {
                 </p>
                 <Link
                   to="/signals"
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffde02] hover:underline pt-1"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#ffb600] hover:underline pt-1"
                 >
                   Open VIP Signal Feed <ArrowRight size={13} />
                 </Link>
@@ -1627,7 +1592,7 @@ export function DashboardPage() {
             </span>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffde02]">
+                <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffb600]">
                   HIGH-IMPACT MACROECONOMIC CALENDAR
                 </span>
                 <span className="hidden sm:inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -1638,9 +1603,9 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 self-start md:self-auto">
-            <ShieldAlert size={15} className="text-[#ffde02] shrink-0" />
-            <span className="text-xs font-mono font-bold text-[#ffde02]">
+          <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 self-start md:self-auto">
+            <ShieldAlert size={15} className="text-[#ffb600] shrink-0" />
+            <span className="text-xs font-mono font-bold text-[#ffb600]">
               Protect stops 15m before red-folder releases
             </span>
           </div>
@@ -1650,7 +1615,7 @@ export function DashboardPage() {
           {ECONOMIC_CALENDAR_EVENTS.map((ev) => (
             <div
               key={ev.id}
-              className="p-4 rounded-xl bg-[#0d1017] hover:bg-[#131822] border border-white/10 hover:border-[#ffde02]/30 transition flex flex-col justify-between gap-3.5"
+              className="p-4 rounded-xl bg-[#0d1017] hover:bg-[#131822] border border-white/10 hover:border-[#ffb600]/30 transition flex flex-col justify-between gap-3.5"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-mono font-extrabold text-white bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg tracking-wider">
@@ -1666,7 +1631,7 @@ export function DashboardPage() {
                   {ev.event}
                 </div>
                 <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[#9aa4b5] bg-white/5 px-2 py-0.5 rounded">
-                  <Clock size={11} className="text-[#ffde02]" />
+                  <Clock size={11} className="text-[#ffb600]" />
                   <span>{ev.timeGmt}</span>
                 </div>
               </div>
@@ -1963,7 +1928,7 @@ export function SettingsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <b className="text-white text-base">{student.fullName}</b>
                     {student.username && (
-                      <span className="px-2 py-0.5 rounded-full bg-[#ffde02]/15 border border-[#ffde02]/35 text-[11px] font-mono font-bold text-[#ffde02]">
+                      <span className="px-2 py-0.5 rounded-full bg-[#ffb600]/15 border border-[#ffb600]/35 text-[11px] font-mono font-bold text-[#ffb600]">
                         @{student.username}
                       </span>
                     )}
@@ -1972,7 +1937,7 @@ export function SettingsPage() {
                     {student.email} · {student.country}
                   </small>
                   {avatarFeedback && (
-                    <span className="text-xs text-[#ffde02] mt-1 block">{avatarFeedback}</span>
+                    <span className="text-xs text-[#ffb600] mt-1 block">{avatarFeedback}</span>
                   )}
                 </div>
               </div>
@@ -1988,7 +1953,7 @@ export function SettingsPage() {
                   type="button"
                   disabled={uploadingAvatar}
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer"
                 >
                   <Camera size={15} />
                   {uploadingAvatar ? "Uploading Photo..." : "Upload Profile Photo"}
@@ -1997,10 +1962,10 @@ export function SettingsPage() {
             </div>
 
             {/* Username & Password Setup Box with Real-Time Availability Check */}
-            <div className="p-4 rounded-2xl bg-[#11151e] border border-[#ffde02]/30 mb-4 space-y-3">
+            <div className="p-4 rounded-2xl bg-[#11151e] border border-[#ffb600]/30 mb-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#ffde02]">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#ffb600]">
                     LOGIN CREDENTIALS · EMAIL OR USERNAME
                   </span>
                   <h3 className="text-sm font-bold text-white mt-0.5">
@@ -2020,7 +1985,7 @@ export function SettingsPage() {
                     Login Username (@username)
                     <div className="relative">
                       <span
-                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#ffde02]"
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#ffb600]"
                         style={{ marginTop: "4px" }}
                       >
                         @
@@ -2035,7 +2000,7 @@ export function SettingsPage() {
                   </label>
                   {checkingUsername && (
                     <span className="text-[11px] font-mono text-[#9aa4b5] mt-1.5 flex items-center gap-1.5">
-                      <RefreshCw size={12} className="animate-spin text-[#ffde02]" />
+                      <RefreshCw size={12} className="animate-spin text-[#ffb600]" />
                       Checking availability...
                     </span>
                   )}
@@ -2074,7 +2039,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => setShowAccountPassword(!showAccountPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffde02] bg-transparent border-0 cursor-pointer p-1"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8c94a2] hover:text-[#ffb600] bg-transparent border-0 cursor-pointer p-1"
                         style={{ marginTop: "4px" }}
                       >
                         {showAccountPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -2199,7 +2164,7 @@ export function SettingsPage() {
                       onClick={() => setTradingStyle(style)}
                       className={`px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                         tradingStyle === style
-                          ? "bg-[#ffde02] text-black border-[#ffde02]"
+                          ? "bg-[#ffb600] text-black border-[#ffb600]"
                           : "bg-white/5 text-white border-white/10 hover:bg-white/10"
                       }`}
                     >
@@ -2252,7 +2217,7 @@ export function SettingsPage() {
               </span>
               <Link
                 to="/onboarding"
-                className="text-[#ffde02] hover:underline font-bold flex items-center gap-1"
+                className="text-[#ffb600] hover:underline font-bold flex items-center gap-1"
               >
                 Run Onboarding / Re-verify <ArrowRight size={13} />
               </Link>
@@ -2297,7 +2262,7 @@ export function SettingsPage() {
 
             {mentorMessages.length > 0 && (
               <div className="mt-5 pt-4 border-t border-white/10 space-y-2.5">
-                <span className="text-[11px] font-mono uppercase text-[#ffde02]">
+                <span className="text-[11px] font-mono uppercase text-[#ffb600]">
                   Your Mentorship Conversation History ({mentorMessages.length})
                 </span>
                 {mentorMessages.map((m) => (
@@ -2305,12 +2270,12 @@ export function SettingsPage() {
                     key={m.id}
                     className={`p-3 rounded-xl border text-xs ${
                       m.senderRole === "admin"
-                        ? "bg-[#ffde02]/10 border-[#ffde02]/40 text-white"
+                        ? "bg-[#ffb600]/10 border-[#ffb600]/40 text-white"
                         : "bg-[#141821] border-white/10 text-[#d0d7e3]"
                     }`}
                   >
                     <div className="flex items-center justify-between text-[10px] font-mono text-[#8c95a6] mb-1">
-                      <strong className={m.senderRole === "admin" ? "text-[#ffde02]" : "text-white"}>
+                      <strong className={m.senderRole === "admin" ? "text-[#ffb600]" : "text-white"}>
                         {m.senderRole === "admin" ? "Pastor Mike (Founder)" : "You"} · {m.subject}
                       </strong>
                       <span>{new Date(m.createdAt).toLocaleString()}</span>
@@ -2380,7 +2345,7 @@ export function SettingsPage() {
                   {config.partnerCode}
                 </p>
               </div>
-              <button type="button" className="text-xs text-[#ffde02] font-bold">
+              <button type="button" className="text-xs text-[#ffb600] font-bold">
                 {ticketGuideOpen ? "Hide Guide ↑" : "Show Guide ↓"}
               </button>
             </div>
@@ -2399,7 +2364,7 @@ export function SettingsPage() {
           <Card className="settings-card" id="sql-schema">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                   SUPABASE POSTGRESQL UPGRADE SCRIPT
                 </span>
                 <h2>Client &amp; Admin Dashboard SQL Schema</h2>
@@ -2414,14 +2379,14 @@ export function SettingsPage() {
                   setCopiedUpgradeSql(true);
                   setTimeout(() => setCopiedUpgradeSql(false), 3000);
                 }}
-                className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider shrink-0 flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider shrink-0 flex items-center gap-1.5 cursor-pointer"
               >
                 {copiedUpgradeSql ? <Check size={14} /> : <Copy size={14} />}
                 {copiedUpgradeSql ? "Copied Upgrade SQL!" : "Copy Dashboard Upgrade SQL"}
               </button>
             </div>
             <details className="mt-4 pt-3 border-t border-white/10">
-              <summary className="text-xs font-mono font-bold text-[#ffde02] cursor-pointer select-none">
+              <summary className="text-xs font-mono font-bold text-[#ffb600] cursor-pointer select-none">
                 Inspect Complete Supabase Upgrade SQL Script ↓
               </summary>
               <pre className="mt-3 p-4 rounded-xl bg-[#0b0e14] border border-white/10 text-[11px] font-mono text-[#c5cedb] overflow-x-auto max-h-80 overflow-y-auto">
@@ -2500,7 +2465,7 @@ export function CoursesPage() {
               </Link>
             </div>
           ) : (
-            <span className="text-xs text-[#ffde02] flex items-center gap-1.5 font-bold">
+            <span className="text-xs text-[#ffb600] flex items-center gap-1.5 font-bold">
               <Lock size={14} /> Deposit $50 to Unlock
             </span>
           )}
@@ -2524,7 +2489,7 @@ export function CoursesPage() {
             return (
               <div className="course-card relative flex flex-col justify-between" key={c.slug}>
                 {!isDepositCompleted && (
-                  <div className="absolute top-3 right-3 z-10 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full border border-[#ffde02]/40 text-[#ffde02] text-xs font-bold flex items-center gap-1">
+                  <div className="absolute top-3 right-3 z-10 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full border border-[#ffb600]/40 text-[#ffb600] text-xs font-bold flex items-center gap-1">
                     <Lock size={12} /> $50 Deposit Gate
                   </div>
                 )}
@@ -2561,14 +2526,14 @@ export function CoursesPage() {
                         </span>
                         <Link
                           to={`/quiz/${c.slug}`}
-                          className="text-[#ffde02] hover:underline font-bold"
+                          className="text-[#ffb600] hover:underline font-bold"
                         >
                           Take Quiz →
                         </Link>
                       </div>
                       <Link
                         to={`/courses/${c.slug}`}
-                        className="inline-flex items-center gap-1.5 text-xs font-extrabold text-white hover:text-[#ffde02] pt-1"
+                        className="inline-flex items-center gap-1.5 text-xs font-extrabold text-white hover:text-[#ffb600] pt-1"
                       >
                         {pct > 0 ? "Continue lessons" : "Start course"} <Icon name="arrow" />
                       </Link>
@@ -2660,7 +2625,7 @@ export function CourseDetailPage() {
               </Link>
             </div>
           ) : (
-            <span className="text-xs text-[#ffde02] font-bold flex items-center gap-1.5">
+            <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
               <Lock size={14} /> Deposit $50 to Unlock All Lessons
             </span>
           )}
@@ -2686,7 +2651,7 @@ export function CourseDetailPage() {
 
         {c.lessons.length === 0 ? (
           <Card className="p-6 text-center space-y-2 border border-dashed border-white/15">
-            <VideoIcon size={28} className="mx-auto text-[#ffde02]" />
+            <VideoIcon size={28} className="mx-auto text-[#ffb600]" />
             <h3 className="text-sm font-bold text-white">
               No Videos Uploaded for {c.title} ({c.level}) Yet
             </h3>
@@ -2822,7 +2787,7 @@ export function LessonPage() {
   if (!activeLesson || !activeCourse) {
     return (
       <Card className="p-8 text-center space-y-3 my-6">
-        <VideoIcon size={32} className="mx-auto text-[#ffde02]" />
+        <VideoIcon size={32} className="mx-auto text-[#ffb600]" />
         <h2 className="text-lg font-bold text-white">No Video Lessons Uploaded Yet</h2>
         <p className="text-xs text-[#9aa4b5] max-w-md mx-auto">
           Pastor Mike will upload and name the video lessons for this track in the Admin Course Studio.
@@ -2928,13 +2893,13 @@ export function LessonPage() {
           })}
           <Link
             to={`/quiz/${activeCourse.slug}`}
-            className="mt-2 border border-[#ffde02]/40 bg-[#ffde02]/10 rounded-xl"
+            className="mt-2 border border-[#ffb600]/40 bg-[#ffb600]/10 rounded-xl"
           >
             <i>
               <Icon name="chart" />
             </i>
             <span>
-              <strong className="text-[#ffde02]">Take {activeCourse.level} PDF Quiz</strong>
+              <strong className="text-[#ffb600]">Take {activeCourse.level} PDF Quiz</strong>
               <small>Multi-question assessment for {activeCourse.title}</small>
             </span>
           </Link>
@@ -3116,7 +3081,7 @@ export function QuizPage() {
             </div>
             {picked !== null && generatedQuestions[n].explanation && (
               <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-[#cfd7e4]">
-                <strong className="text-[#ffde02] font-mono uppercase text-[10px] block mb-0.5">
+                <strong className="text-[#ffb600] font-mono uppercase text-[10px] block mb-0.5">
                   Study Note &amp; Concept Focus
                 </strong>
                 {generatedQuestions[n].explanation}
@@ -3247,14 +3212,14 @@ export function ProgressPage() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Double gold institutional border
-        ctx.strokeStyle = "#ffde02";
+        ctx.strokeStyle = "#ffb600";
         ctx.lineWidth = 6;
         ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
-        ctx.strokeStyle = "rgba(255, 222, 2, 0.35)";
+        ctx.strokeStyle = "rgba(255, 182, 0, 0.35)";
         ctx.lineWidth = 2;
         ctx.strokeRect(58, 58, canvas.width - 116, canvas.height - 116);
 
-        ctx.fillStyle = "#ffde02";
+        ctx.fillStyle = "#ffb600";
         ctx.font = "bold 22px monospace";
         ctx.textAlign = "center";
         ctx.fillText(
@@ -3275,7 +3240,7 @@ export function ProgressPage() {
       // Overlay Student Full Name at Admin-configured vertical position (nameYPercent)
       const nameY = (certTemplate.nameYPercent / 100) * canvas.height;
       const scaledFontSize = Math.round((certTemplate.fontSizePx || 38) * 1.65);
-      ctx.fillStyle = certTemplate.fontColor || "#ffde02";
+      ctx.fillStyle = certTemplate.fontColor || "#ffb600";
       ctx.font = `bold ${scaledFontSize}px ${
         certTemplate.fontFamily === "serif"
           ? "Georgia, serif"
@@ -3303,7 +3268,7 @@ export function ProgressPage() {
       ctx.fillText(`${cert.issuedBy} · Academy Founder`, canvas.width * 0.25, footerY);
 
       if (certTemplate.showCertificateCode) {
-        ctx.fillStyle = "#ffde02";
+        ctx.fillStyle = "#ffb600";
         ctx.fillText(`ID: ${cert.certificateCode}`, canvas.width * 0.5, footerY);
       }
 
@@ -3391,7 +3356,7 @@ export function ProgressPage() {
                 <strong>{c.progressPct}%</strong>
                 <Link
                   to={`/quiz/${c.slug}`}
-                  className="block text-[10px] font-mono text-[#ffde02] hover:underline mt-1"
+                  className="block text-[10px] font-mono text-[#ffb600] hover:underline mt-1"
                 >
                   Level Quiz →
                 </Link>
@@ -3430,7 +3395,7 @@ export function ProgressPage() {
           {metrics.quizAttempts.length === 0 ? (
             <p className="text-xs text-[#8c95a6] py-3">
               No quiz attempts recorded yet. Visit any course and click{" "}
-              <Link to="/quiz/forex-foundations" className="text-[#ffde02] underline">
+              <Link to="/quiz/forex-foundations" className="text-[#ffb600] underline">
                 Take Level PDF Quiz
               </Link>{" "}
               to test your knowledge.
@@ -3467,7 +3432,7 @@ export function ProgressPage() {
 
         {certificates.length === 0 ? (
           <div className="py-8 text-center space-y-2">
-            <Award size={32} className="mx-auto text-[#ffde02]" />
+            <Award size={32} className="mx-auto text-[#ffb600]" />
             <p className="text-sm font-bold text-white">
               Complete a course track &amp; pass its level quiz (70%+) to unlock your verified certificate
             </p>
@@ -3480,10 +3445,10 @@ export function ProgressPage() {
             {certificates.map((cert) => (
               <div
                 key={cert.id}
-                className="p-5 rounded-2xl bg-gradient-to-br from-[#181d29] to-[#11151d] border border-[#ffde02]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                className="p-5 rounded-2xl bg-gradient-to-br from-[#181d29] to-[#11151d] border border-[#ffb600]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
               >
                 <div className="space-y-1">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02]">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
                     VERIFIED CERTIFICATE · {cert.certificateCode}
                   </span>
                   <h3 className="text-base font-bold text-white">{cert.courseTitle}</h3>
@@ -3503,9 +3468,9 @@ export function ProgressPage() {
 
       {previewCert && (
         <div className="portal-modal">
-          <div className="bg-[#0e1118] border-2 border-[#ffde02] rounded-3xl p-5 sm:p-7 max-w-3xl w-full text-center space-y-5 shadow-2xl relative">
+          <div className="bg-[#0e1118] border-2 border-[#ffb600] rounded-3xl p-5 sm:p-7 max-w-3xl w-full text-center space-y-5 shadow-2xl relative">
             {/* Live Rendered Certificate Using Admin's Uploaded Template + Student Name Overlay */}
-            <div className="relative w-full aspect-[16/10] rounded-2xl overflow-hidden border border-[#ffde02]/40 bg-[#0b0e14] shadow-2xl select-none">
+            <div className="relative w-full aspect-[16/10] rounded-2xl overflow-hidden border border-[#ffb600]/40 bg-[#0b0e14] shadow-2xl select-none">
               {certTemplate.templateImageUrl ? (
                 <img
                   src={certTemplate.templateImageUrl}
@@ -3513,9 +3478,9 @@ export function ProgressPage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-[#141926] via-[#0e121b] to-[#191f2e] flex flex-col items-center justify-between p-8 border-[6px] border-double border-[#ffde02]/40">
+                <div className="w-full h-full bg-gradient-to-br from-[#141926] via-[#0e121b] to-[#191f2e] flex flex-col items-center justify-between p-8 border-[6px] border-double border-[#ffb600]/40">
                   <div className="text-center space-y-1">
-                    <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#ffde02]">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#ffb600]">
                       CANDLESTICKS TRADING ACADEMY · OFFICIAL CREDENTIAL
                     </span>
                     <h4 className="text-xl sm:text-2xl font-serif font-extrabold text-white tracking-wide">
@@ -3527,7 +3492,7 @@ export function ProgressPage() {
                   <div className="w-full flex items-center justify-around pt-3 border-t border-white/10 text-[10px] font-mono text-[#9aa4b5]">
                     <span>{previewCert.issuedBy} · Founder</span>
                     {certTemplate.showCertificateCode && (
-                      <span className="text-[#ffde02]">{previewCert.certificateCode}</span>
+                      <span className="text-[#ffb600]">{previewCert.certificateCode}</span>
                     )}
                     {certTemplate.showIssueDate && (
                       <span>{new Date(previewCert.issuedAt).toLocaleDateString()}</span>
@@ -3547,7 +3512,7 @@ export function ProgressPage() {
                 <div
                   style={{
                     fontSize: `${Math.max(18, Math.round(certTemplate.fontSizePx * 0.78))}px`,
-                    color: certTemplate.fontColor || "#ffde02",
+                    color: certTemplate.fontColor || "#ffb600",
                     fontFamily:
                       certTemplate.fontFamily === "serif"
                         ? "Georgia, Cambria, 'Times New Roman', serif"
@@ -3697,7 +3662,7 @@ export function SessionSchedulePage() {
                 {isLiveNow ? "Watch Live Screen Share Now" : "Enter Waiting Room & Live Chat"}
               </Link>
             ) : (
-              <span className="text-xs text-[#ffde02] font-bold flex items-center gap-1.5">
+              <span className="text-xs text-[#ffb600] font-bold flex items-center gap-1.5">
                 <Lock size={14} /> Deposit $50 to Enter Live Room
               </span>
             )}
@@ -3705,7 +3670,7 @@ export function SessionSchedulePage() {
         </Card>
       ) : (
         <Card className="p-8 text-center space-y-3 my-4 border border-dashed border-white/15">
-          <Radio size={32} className="mx-auto text-[#ffde02]" />
+          <Radio size={32} className="mx-auto text-[#ffb600]" />
           <h2 className="text-lg font-bold text-white">No Live Sessions Scheduled Yet</h2>
           <p className="text-xs text-[#9aa4b5] max-w-lg mx-auto">
             Only real live sessions scheduled or broadcast by Pastor Mike in the Admin Broadcast Studio appear here. As soon as a session is scheduled or goes live, the countdown and stream room will unlock automatically.
@@ -3917,7 +3882,7 @@ export function LiveRoomPage() {
               <div className="stream-chart relative">
                 <div className="flex items-center justify-between w-full">
                   <span>{activeSession?.focusPair || "EUR / USD · XAU / USD"} · LIVE TERMINAL</span>
-                  <span className="text-xs font-mono text-[#ffde02]">
+                  <span className="text-xs font-mono text-[#ffb600]">
                     {isLive
                       ? "Host is connected · Awaiting screen share window"
                       : `Stream starts in ${countdownText}`}
@@ -3948,7 +3913,7 @@ export function LiveRoomPage() {
                 <span>
                   <Icon name="book" /> {res.title}
                 </span>
-                <Link to={res.url || "/signals"} className="text-xs font-bold text-[#ffde02]">
+                <Link to={res.url || "/signals"} className="text-xs font-bold text-[#ffb600]">
                   Open ↗
                 </Link>
               </div>
@@ -3966,8 +3931,8 @@ export function LiveRoomPage() {
 
             {/* Pinned Host Message Banner */}
             {chatMessages.find((m) => m.isPinned) && (
-              <div className="mb-3 p-2.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs">
-                <span className="text-[10px] font-mono uppercase text-[#ffde02] block">
+              <div className="mb-3 p-2.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs">
+                <span className="text-[10px] font-mono uppercase text-[#ffb600] block">
                   📌 PINNED BY HOST
                 </span>
                 <span className="text-white">
@@ -3985,10 +3950,10 @@ export function LiveRoomPage() {
                     sizeClass="w-7 h-7 text-[10px]"
                   />
                   <p>
-                    <b className={m.isHost ? "text-[#ffde02]" : ""}>
+                    <b className={m.isHost ? "text-[#ffb600]" : ""}>
                       {m.senderName}{" "}
                       {m.isHost && (
-                        <span className="text-[9px] font-mono bg-[#ffde02]/20 text-[#ffde02] px-1.5 py-0.5 rounded ml-1">
+                        <span className="text-[9px] font-mono bg-[#ffb600]/20 text-[#ffb600] px-1.5 py-0.5 rounded ml-1">
                           HOST
                         </span>
                       )}
@@ -4214,7 +4179,7 @@ export function TradesPage() {
       />
 
       {syncMsg && (
-        <div className="mb-5 p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+        <div className="mb-5 p-3.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
           <CheckCircle2 size={15} />
           <span>{syncMsg}</span>
         </div>
@@ -4325,7 +4290,7 @@ export function TradesPage() {
                           · {new Date(t.executedAt).toLocaleDateString()}
                         </small>
                         {t.notes && (
-                          <span className="block text-[10px] text-[#ffde02]/90 mt-0.5">
+                          <span className="block text-[10px] text-[#ffb600]/90 mt-0.5">
                             {t.notes}
                           </span>
                         )}
@@ -4416,7 +4381,7 @@ export function TradesPage() {
                 onClick={() => setCurrentPage(pageNum)}
                 className={`w-8 h-8 rounded-lg text-xs font-mono font-bold cursor-pointer transition ${
                   pageNum === safePage
-                    ? "bg-[#ffde02] text-black"
+                    ? "bg-[#ffb600] text-black"
                     : "bg-white/5 text-[#9aa4b5] hover:text-white"
                 }`}
               >
@@ -4603,10 +4568,10 @@ function CopySignalToExnessModal({
 
   return (
     <div className="portal-modal">
-      <div className="bg-[#11151f] border-2 border-[#ffde02]/50 rounded-3xl p-6 sm:p-7 max-w-xl w-full text-left space-y-5 shadow-2xl">
+      <div className="bg-[#11151f] border-2 border-[#ffb600]/50 rounded-3xl p-6 sm:p-7 max-w-xl w-full text-left space-y-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3 pb-4 border-b border-white/10">
           <div>
-            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffde02]">
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffb600]">
               EXNESS COPY-TRADING &amp; EXECUTION TERMINAL
             </span>
             <h2 className="text-xl font-extrabold text-white mt-1 flex items-center gap-2">
@@ -4655,7 +4620,7 @@ function CopySignalToExnessModal({
               <label className="text-xs font-bold text-white">
                 Your Execution Lot Size (Standard Lots)
               </label>
-              <span className="text-[11px] font-mono text-[#ffde02]">
+              <span className="text-[11px] font-mono text-[#ffb600]">
                 Recommended: {defaultLots} Lots
               </span>
             </div>
@@ -4666,7 +4631,7 @@ function CopySignalToExnessModal({
               required
               value={customLots}
               onChange={(e) => setCustomLots(e.target.value)}
-              className="w-full h-11 bg-[#161b26] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+              className="w-full h-11 bg-[#161b26] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffb600]"
             />
             <div className="flex flex-wrap gap-1.5 mt-2">
               {[0.01, 0.05, 0.1, 0.25, 0.5, 1.0].map((preset) => (
@@ -4676,7 +4641,7 @@ function CopySignalToExnessModal({
                   onClick={() => setCustomLots(String(preset))}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition cursor-pointer ${
                     Number(customLots) === preset
-                      ? "bg-[#ffde02] text-black border-[#ffde02]"
+                      ? "bg-[#ffb600] text-black border-[#ffb600]"
                       : "bg-white/5 text-[#cfd7e4] border-white/10 hover:bg-white/10"
                   }`}
                 >
@@ -4749,11 +4714,11 @@ function CopySignalToExnessModal({
               type="checkbox"
               checked={launchWebTerminal}
               onChange={(e) => setLaunchWebTerminal(e.target.checked)}
-              className="accent-[#ffde02] w-4 h-4"
+              className="accent-[#ffb600] w-4 h-4"
             />
             <span>
               Also open <strong>Exness WebTerminal</strong> in a new tab to place this live order on account{" "}
-              <code className="text-[#ffde02]">
+              <code className="text-[#ffb600]">
                 {student.exnessId ? `••••${student.exnessId.slice(-4)}` : "Exness"}
               </code>
             </span>
@@ -4866,7 +4831,7 @@ export function SignalFeedPage() {
         <div className="mb-5 p-3.5 rounded-2xl bg-[#10141d] border border-white/10 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffde02] font-bold">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600] font-bold">
               LIVE MARKET FEED (AUTO-TRIGGERS TP1–TP5)
             </span>
           </div>
@@ -4914,11 +4879,11 @@ export function SignalFeedPage() {
       <section className="mb-6 rounded-2xl bg-gradient-to-b from-[#161b26] to-[#10141d] border border-white/10 p-6 sm:p-7 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-5 border-b border-white/10">
           <div className="flex items-start sm:items-center gap-3.5">
-            <span className="w-11 h-11 rounded-xl bg-[#ffde02]/15 border border-[#ffde02]/30 text-[#ffde02] flex items-center justify-center shrink-0">
+            <span className="w-11 h-11 rounded-xl bg-[#ffb600]/15 border border-[#ffb600]/30 text-[#ffb600] flex items-center justify-center shrink-0">
               <Calculator size={20} />
             </span>
             <div className="space-y-1">
-              <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffde02] block">
+              <span className="text-[11px] font-mono font-extrabold uppercase tracking-[0.14em] text-[#ffb600] block">
                 INTERACTIVE POSITION SIZE &amp; RISK CALCULATOR
               </span>
               <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-snug m-0">
@@ -4928,7 +4893,7 @@ export function SignalFeedPage() {
           </div>
           <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-[#cfd7e4] self-start md:self-auto">
             <span>Max Risk:</span>
-            <strong className="text-[#ffde02]">${lotCalc.riskUsd.toFixed(2)} USD</strong>
+            <strong className="text-[#ffb600]">${lotCalc.riskUsd.toFixed(2)} USD</strong>
             <span>({calcRiskPct || 1}%)</span>
           </div>
         </div>
@@ -4942,7 +4907,7 @@ export function SignalFeedPage() {
               type="number"
               value={calcBalance}
               onChange={(e) => setCalcBalance(e.target.value)}
-              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
@@ -4955,7 +4920,7 @@ export function SignalFeedPage() {
               step="0.25"
               value={calcRiskPct}
               onChange={(e) => setCalcRiskPct(e.target.value)}
-              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
@@ -4967,12 +4932,12 @@ export function SignalFeedPage() {
               type="number"
               value={calcStopPips}
               onChange={(e) => setCalcStopPips(e.target.value)}
-              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffde02]"
+              className="w-full h-11 bg-[#151a24] border border-white/15 rounded-xl px-3.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
-          <div className="p-4 rounded-xl bg-gradient-to-br from-[#ffde02]/20 to-[#ffde02]/5 border-2 border-[#ffde02]/50 flex flex-col justify-center text-center">
-            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffde02] block">
+          <div className="p-4 rounded-xl bg-gradient-to-br from-[#ffb600]/20 to-[#ffb600]/5 border-2 border-[#ffb600]/50 flex flex-col justify-center text-center">
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#ffb600] block">
               RECOMMENDED LOT SIZE
             </span>
             <strong className="text-2xl font-mono font-extrabold text-white mt-1">
@@ -4991,7 +4956,7 @@ export function SignalFeedPage() {
             <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
             <span>{copyFeedback}</span>
           </div>
-          <Link to="/trades" className="text-[#ffde02] font-bold hover:underline shrink-0">
+          <Link to="/trades" className="text-[#ffb600] font-bold hover:underline shrink-0">
             View in My Trades →
           </Link>
         </div>
@@ -5009,7 +4974,7 @@ export function SignalFeedPage() {
           <button
             key={key}
             type="button"
-            className={tab === key ? "active bg-[#ffde02] text-black font-bold" : ""}
+            className={tab === key ? "active bg-[#ffb600] text-black font-bold" : ""}
             onClick={() => setTab(key)}
           >
             {label}
@@ -5019,7 +4984,7 @@ export function SignalFeedPage() {
 
       {filteredSignals.length === 0 ? (
         <Card className="p-8 text-center space-y-2 border border-dashed border-white/15 my-4">
-          <Target size={30} className="mx-auto text-[#ffde02]" />
+          <Target size={30} className="mx-auto text-[#ffb600]" />
           <h3 className="text-base font-bold text-white">No Signals Posted by Admin Yet</h3>
           <p className="text-xs text-[#9aa4b5] max-w-md mx-auto">
             Only real signals posted by Pastor Mike in the Admin Console appear here. When a signal is posted, its live market price and TP1–TP5 targets will track automatically.
@@ -5060,7 +5025,7 @@ export function SignalFeedPage() {
                     </Badge>
                     {livePrice && (
                       <span className="px-2 py-0.5 rounded bg-white/10 text-[11px] font-mono text-white">
-                        Live Market: <strong className="text-[#ffde02]">{livePrice}</strong>
+                        Live Market: <strong className="text-[#ffb600]">{livePrice}</strong>
                       </span>
                     )}
                     <span className="text-xs font-mono text-[#8c95a6]">
@@ -5092,7 +5057,7 @@ export function SignalFeedPage() {
                             e.stopPropagation();
                             setCopyModalSignal(s);
                           }}
-                          className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0"
+                          className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0"
                         >
                           Copy &amp; Log Trade
                         </button>
@@ -5257,7 +5222,7 @@ export function SignalDetailPage() {
                       : "bg-[#141821] border-white/10 text-white"
                   }`}
                 >
-                  <span className="text-[10px] font-mono uppercase text-[#ffde02] block">
+                  <span className="text-[10px] font-mono uppercase text-[#ffb600] block">
                     {lvl.label}
                   </span>
                   <strong className="text-sm font-mono font-bold block mt-0.5">
@@ -5287,7 +5252,7 @@ export function SignalDetailPage() {
               <img
                 src="/ceo.png"
                 alt="Pastor Mike"
-                className="w-10 h-10 rounded-full object-cover border border-[#ffde02]/50"
+                className="w-10 h-10 rounded-full object-cover border border-[#ffb600]/50"
               />
               <b>
                 {s.author || "Pastor Mike"}
@@ -5299,7 +5264,7 @@ export function SignalDetailPage() {
             <blockquote>
               Recommended Position Size for your ${student.accountBalanceUsd || 500} equity at{" "}
               {student.riskPerTradePct || 1}% risk:{" "}
-              <strong className="text-[#ffde02]">{lotCalc.recommendedLots} Lots</strong> (${lotCalc.riskUsd} max risk).
+              <strong className="text-[#ffb600]">{lotCalc.recommendedLots} Lots</strong> (${lotCalc.riskUsd} max risk).
             </blockquote>
           </Card>
         </div>
@@ -5556,7 +5521,7 @@ export function StudentRosterPage() {
                         <b>
                           {s.fullName}{" "}
                           {s.username && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#ffde02]/15 text-[#ffde02] font-mono text-[10px]">
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#ffb600]/15 text-[#ffb600] font-mono text-[10px]">
                               @{s.username}
                             </span>
                           )}
@@ -5581,7 +5546,7 @@ export function StudentRosterPage() {
                   <td>
                     <strong
                       className={
-                        s.depositAmount >= 50 ? "text-[#ffde02]" : "text-[#9aa4b5]"
+                        s.depositAmount >= 50 ? "text-[#ffb600]" : "text-[#9aa4b5]"
                       }
                     >
                       ${s.depositAmount.toFixed(2)}
@@ -5622,7 +5587,7 @@ export function StudentRosterPage() {
                 href={selected.avatarUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] font-mono text-[#ffde02] hover:underline block text-center mt-1"
+                className="text-[11px] font-mono text-[#ffb600] hover:underline block text-center mt-1"
               >
                 View Full Uploaded Photo ↗
               </a>
@@ -5646,7 +5611,7 @@ export function StudentRosterPage() {
 
             <h3>Issue Verified Course Certificate</h3>
             {certFeedback && (
-              <div className="p-2.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] my-2">
+              <div className="p-2.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] my-2">
                 {certFeedback}
               </div>
             )}
@@ -5676,7 +5641,7 @@ export function StudentRosterPage() {
                       <button
                         type="button"
                         onClick={() => void handleIssueCertificate(slug, title)}
-                        className="px-2.5 py-1 rounded-lg bg-[#ffde02] text-black font-extrabold text-[11px] cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-[#ffb600] text-black font-extrabold text-[11px] cursor-pointer"
                       >
                         Issue Certificate
                       </button>
@@ -5916,7 +5881,7 @@ export function VerificationPage() {
             type="button"
             disabled={refreshingLiveExness}
             onClick={handleRefreshLiveFromExness}
-            className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-full hover:bg-[#ffe540] transition cursor-pointer flex items-center gap-2 disabled:opacity-60"
+            className="bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-full hover:bg-[#ffc833] transition cursor-pointer flex items-center gap-2 disabled:opacity-60"
           >
             <RefreshCw size={14} className={refreshingLiveExness ? "animate-spin" : ""} />
             {refreshingLiveExness ? "Syncing External Accounts..." : "Sync External Exness Partner Accounts"}
@@ -5928,7 +5893,7 @@ export function VerificationPage() {
       <Card className="data-card mb-8">
         <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
               public.exness_partner_clients · PARTNER ACCOUNT #{OFFICIAL_PARTNER_ACCOUNT_ID}
             </span>
             <h3 className="text-lg font-bold text-white mt-0.5">
@@ -5940,7 +5905,7 @@ export function VerificationPage() {
               type="button"
               disabled={refreshingLiveExness}
               onClick={handleRefreshLiveFromExness}
-              className="px-3.5 py-1.5 rounded-lg bg-[#ffde02]/15 border border-[#ffde02]/40 text-[#ffde02] font-sans font-bold hover:bg-[#ffde02]/25 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              className="px-3.5 py-1.5 rounded-lg bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] font-sans font-bold hover:bg-[#ffb600]/25 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
             >
               <RefreshCw size={13} className={refreshingLiveExness ? "animate-spin" : ""} />
               {refreshingLiveExness ? "Refreshing..." : "Sync from Partner Link"}
@@ -5948,13 +5913,13 @@ export function VerificationPage() {
             <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[#b8c0cc]">
               Volume: <b className="text-white">{EXNESS_PARTNER_TOTALS.volume_lots} lots</b>
             </span>
-            <span className="px-3 py-1.5 rounded-lg bg-[#ffde02]/10 border border-[#ffde02]/30 text-[#ffde02]">
+            <span className="px-3 py-1.5 rounded-lg bg-[#ffb600]/10 border border-[#ffb600]/30 text-[#ffb600]">
               Rewards: <b>${EXNESS_PARTNER_TOTALS.reward_usd} USD</b>
             </span>
           </div>
         </div>
         {liveExnessFeedback && (
-          <div className="mx-5 mb-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+          <div className="mx-5 mb-3 p-3 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
             <CheckCircle2 size={15} />
             <span>{liveExnessFeedback}</span>
           </div>
@@ -5978,7 +5943,7 @@ export function VerificationPage() {
             <tbody>
               {EXNESS_PARTNER_CLIENTS.map((c) => (
                 <tr key={c.id}>
-                  <td className="font-mono text-xs font-bold text-[#ffde02]">
+                  <td className="font-mono text-xs font-bold text-[#ffb600]">
                     #{c.trading_account_id}
                   </td>
                   <td className="font-mono text-xs text-white">{c.client_account_id}</td>
@@ -5992,7 +5957,7 @@ export function VerificationPage() {
                   <td>{c.client_country}</td>
                   <td>{c.volume_lots.toFixed(3)}</td>
                   <td>
-                    <strong className="text-[#ffde02]">${c.reward_usd}</strong>
+                    <strong className="text-[#ffb600]">${c.reward_usd}</strong>
                   </td>
                   <td>
                     <Badge tone={c.client_status === "ACTIVE" ? "yellow" : "gray"}>
@@ -6010,7 +5975,7 @@ export function VerificationPage() {
       <Card className="data-card mb-8">
         <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
               public.support_tickets · PARTNER ACCOUNT TRANSFERS
             </span>
             <h3 className="text-lg font-bold text-white mt-0.5">
@@ -6030,7 +5995,7 @@ export function VerificationPage() {
         </div>
 
         {ticketActionFeedback && (
-          <div className="mx-5 my-3 p-3 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+          <div className="mx-5 my-3 p-3 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
             <CheckCircle2 size={15} />
             <span>{ticketActionFeedback}</span>
           </div>
@@ -6059,9 +6024,9 @@ export function VerificationPage() {
               ) : (
                 transferTickets.map((t) => (
                   <tr key={t.ticket_ref}>
-                    <td className="font-mono text-xs font-bold text-[#ffde02]">#{t.ticket_ref}</td>
+                    <td className="font-mono text-xs font-bold text-[#ffb600]">#{t.ticket_ref}</td>
                     <td className="text-xs text-white">{t.exness_email}</td>
-                    <td className="font-mono text-xs text-[#ffde02] font-bold">
+                    <td className="font-mono text-xs text-[#ffb600] font-bold">
                       #{t.trading_account_id}
                     </td>
                     <td className="font-mono text-xs text-[#9aa4b5]">
@@ -6081,7 +6046,7 @@ export function VerificationPage() {
                           type="button"
                           disabled={checkingTicket === t.ticket_ref}
                           onClick={() => handleCheckTicketOnExness(t)}
-                          className="px-2.5 py-1 rounded bg-[#ffde02]/15 hover:bg-[#ffde02]/25 text-[11px] font-bold text-[#ffde02] border border-[#ffde02]/40 transition cursor-pointer flex items-center gap-1 disabled:opacity-60"
+                          className="px-2.5 py-1 rounded bg-[#ffb600]/15 hover:bg-[#ffb600]/25 text-[11px] font-bold text-[#ffb600] border border-[#ffb600]/40 transition cursor-pointer flex items-center gap-1 disabled:opacity-60"
                         >
                           <RefreshCw
                             size={11}
@@ -6115,7 +6080,7 @@ export function VerificationPage() {
       <div className="bg-[#151820] border border-white/10 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
         <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
           <div>
-            <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffde02] bg-[#ffde02]/10 px-2 py-0.5 rounded">
+            <span className="text-[10px] font-bold tracking-wider uppercase text-[#ffb600] bg-[#ffb600]/10 px-2 py-0.5 rounded">
               Strict Database Gate · public.students
             </span>
             <h3 className="text-lg font-bold text-white mt-1">
@@ -6135,7 +6100,7 @@ export function VerificationPage() {
                 value={newFullName}
                 onChange={(e) => setNewFullName(e.target.value)}
                 placeholder="e.g. Samuel Osei"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -6148,7 +6113,7 @@ export function VerificationPage() {
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 placeholder="trader@email.com"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -6161,7 +6126,7 @@ export function VerificationPage() {
                 value={newExnessId}
                 onChange={(e) => setNewExnessId(e.target.value)}
                 placeholder="Enter Trading Account ID"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -6173,7 +6138,7 @@ export function VerificationPage() {
                 value={newCountry}
                 onChange={(e) => setNewCountry(e.target.value)}
                 placeholder="Ghana"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -6187,7 +6152,7 @@ export function VerificationPage() {
                 value={newDepositAmount}
                 onChange={(e) => setNewDepositAmount(e.target.value)}
                 placeholder="50"
-                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#1b1f29] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
               />
             </div>
           </div>
@@ -6196,13 +6161,13 @@ export function VerificationPage() {
             <button
               type="submit"
               disabled={addingAccount}
-              className="bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-2.5 rounded-full hover:bg-[#ffe540] transition cursor-pointer"
+              className="bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider px-5 py-2.5 rounded-full hover:bg-[#ffc833] transition cursor-pointer"
             >
               {addingAccount ? "Saving to Supabase..." : "+ Approve & Save Account to Supabase"}
             </button>
 
             {addAccountFeedback && (
-              <span className="text-xs text-[#ffde02] font-semibold flex items-center gap-1.5">
+              <span className="text-xs text-[#ffb600] font-semibold flex items-center gap-1.5">
                 <CheckCircle2 size={15} /> {addAccountFeedback.message}
               </span>
             )}
@@ -6267,7 +6232,7 @@ export function VerificationPage() {
                     </Badge>
                   </td>
                   <td>
-                    <strong className={s.depositAmount >= 50 ? "text-[#ffde02]" : "text-[#9aa4b5]"}>
+                    <strong className={s.depositAmount >= 50 ? "text-[#ffb600]" : "text-[#9aa4b5]"}>
                       ${s.depositAmount.toFixed(2)} USD
                     </strong>
                   </td>
@@ -6286,7 +6251,7 @@ export function VerificationPage() {
                         className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${
                           s.depositAmount >= 50
                             ? "bg-white/10 text-[#b8c0cc] hover:bg-white/15"
-                            : "bg-[#ffde02] text-black hover:bg-[#ffe540]"
+                            : "bg-[#ffb600] text-black hover:bg-[#ffc833]"
                         }`}
                       >
                         {s.depositAmount >= 50 ? "Reset Deposit" : "Confirm $50 Deposit"}
@@ -6391,7 +6356,7 @@ export function SignalFormPage() {
             type="button"
             disabled={evaluatingMarket}
             onClick={() => void handleEvaluateLiveMarket()}
-            className="px-4 py-2.5 rounded-full bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2.5 rounded-full bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw size={14} className={evaluatingMarket ? "animate-spin" : ""} />
             {evaluatingMarket ? "Checking Market..." : "Sync Live Market Prices & Auto-Check TPs"}
@@ -6414,7 +6379,7 @@ export function SignalFormPage() {
               className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs font-mono text-white"
             >
               <strong className="text-[#9aa4b5] mr-1.5">{sym}:</strong>
-              <span className="text-[#ffde02] font-bold">{pr}</span>
+              <span className="text-[#ffb600] font-bold">{pr}</span>
             </span>
           ))}
         </div>
@@ -6586,7 +6551,7 @@ export function SignalFormPage() {
       <Card className="data-card mt-8">
         <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
               LIVE DATABASE FEED · public.trading_signals
             </span>
             <h3 className="text-lg font-bold text-white mt-0.5">
@@ -6653,7 +6618,7 @@ export function SignalFormPage() {
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition cursor-pointer ${
                                 lvl.hit
                                   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                  : "bg-white/5 text-[#d0d7e3] border-white/10 hover:border-[#ffde02]/50"
+                                  : "bg-white/5 text-[#d0d7e3] border-white/10 hover:border-[#ffb600]/50"
                               }`}
                               title="Click to toggle TP hit and broadcast alert to students"
                             >
@@ -6693,7 +6658,7 @@ export function SignalFormPage() {
                                 }
                                 className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
                                   s.status === st
-                                    ? "bg-[#ffde02] text-black"
+                                    ? "bg-[#ffb600] text-black"
                                     : "bg-white/10 text-white hover:bg-white/15"
                                 }`}
                               >

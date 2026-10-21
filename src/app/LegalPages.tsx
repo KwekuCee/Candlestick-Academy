@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { BrandLogo } from "./BrandLogo";
 
 type LegalTab = "terms" | "privacy";
 
@@ -82,19 +83,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 }
 
 function LegalLogo() {
-  return (
-    <Link to="/" className="logo" aria-label="Candlesticks Academy home">
-      <span className="logo-mark">
-        <i />
-        <i />
-        <i />
-      </span>
-      <span>
-        CANDLESTICKS
-        <small>ACADEMY</small>
-      </span>
-    </Link>
-  );
+  return <BrandLogo to="/" size="md" />;
 }
 
 interface LegalSection {

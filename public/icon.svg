@@ -5,8 +5,8 @@
       <stop offset="100%" stop-color="#0b0d12" />
     </linearGradient>
     <linearGradient id="goldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#fff078" />
-      <stop offset="55%" stop-color="#ffde02" />
+      <stop offset="0%" stop-color="#ffd15c" />
+      <stop offset="55%" stop-color="#ffb600" />
       <stop offset="100%" stop-color="#cca800" />
     </linearGradient>
     <linearGradient id="greenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -15,14 +15,14 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
-  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#ffde02" stroke-opacity="0.28" stroke-width="4" />
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#ffb600" stroke-opacity="0.28" stroke-width="4" />
   <!-- Left Candlestick -->
   <line x1="156" y1="140" x2="156" y2="380" stroke="#0ecb81" stroke-width="10" stroke-linecap="round" />
   <rect x="132" y="196" width="48" height="120" rx="12" fill="url(#greenGrad)" />
   <!-- Center Tall Gold Candlestick -->
-  <line x1="256" y1="96" x2="256" y2="416" stroke="#ffde02" stroke-width="12" stroke-linecap="round" />
+  <line x1="256" y1="96" x2="256" y2="416" stroke="#ffb600" stroke-width="12" stroke-linecap="round" />
   <rect x="228" y="144" width="56" height="210" rx="14" fill="url(#goldGrad)" />
   <!-- Right Candlestick -->
-  <line x1="356" y1="132" x2="356" y2="372" stroke="#ffde02" stroke-width="10" stroke-linecap="round" />
+  <line x1="356" y1="132" x2="356" y2="372" stroke="#ffb600" stroke-width="10" stroke-linecap="round" />
   <rect x="332" y="180" width="48" height="136" rx="12" fill="url(#goldGrad)" />
 </svg>

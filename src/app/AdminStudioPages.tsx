@@ -220,7 +220,7 @@ export function AdminCoursesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
+          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffb600]">
             FOUNDER COURSE, LEVEL PDF QUIZ &amp; CERTIFICATE STUDIO
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
@@ -257,14 +257,14 @@ export function AdminCoursesPage() {
               }}
               className={`p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
                 isSelected
-                  ? "bg-[#171c26] border-[#ffde02] shadow-[0_10px_30px_rgba(255,222,2,0.12)]"
+                  ? "bg-[#171c26] border-[#ffb600] shadow-[0_10px_30px_rgba(255, 182, 0,0.12)]"
                   : "bg-[#12151d] border-white/10 hover:border-white/25"
               }`}
             >
               <div>
                 <div className="flex items-center justify-between text-xs text-[#9aa4b5] font-mono">
                   <span className="uppercase font-bold text-white">{track.level} Level</span>
-                  <span className="text-[#ffde02] font-bold tabular-nums">
+                  <span className="text-[#ffb600] font-bold tabular-nums">
                     {track.lessons.length} Videos
                   </span>
                 </div>
@@ -272,7 +272,7 @@ export function AdminCoursesPage() {
                 <p className="text-xs text-[#8c95a6] mt-1 line-clamp-2">{track.description}</p>
               </div>
               <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-[11px] font-mono">
-                <span className={isSelected ? "text-[#ffde02] font-bold" : "text-[#7d8799]"}>
+                <span className={isSelected ? "text-[#ffb600] font-bold" : "text-[#7d8799]"}>
                   {track.levelPdfName ? `PDF: ${track.levelPdfName.slice(0, 14)}...` : "Upload Level PDF"}
                 </span>
                 <span className="text-emerald-400">
@@ -293,18 +293,18 @@ export function AdminCoursesPage() {
         >
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                 {selectedTrack.level.toUpperCase()} TRACK · {selectedTrack.title.toUpperCase()}
               </span>
               <h2 className="text-lg font-bold text-white mt-0.5">
                 Name &amp; Upload Video #{lessonNumber}
               </h2>
             </div>
-            <Film size={20} className="text-[#ffde02]" />
+            <Film size={20} className="text-[#ffb600]" />
           </div>
 
           {feedback && (
-            <div className="p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-start gap-2">
+            <div className="p-3.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-start gap-2">
               <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
               <span>{feedback}</span>
             </div>
@@ -321,7 +321,7 @@ export function AdminCoursesPage() {
                 required
                 value={lessonNumber}
                 onChange={(e) => setLessonNumber(Number(e.target.value))}
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -334,7 +334,7 @@ export function AdminCoursesPage() {
                 required
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
               />
             </div>
             <div>
@@ -346,7 +346,7 @@ export function AdminCoursesPage() {
                 value={pairTag}
                 onChange={(e) => setPairTag(e.target.value)}
                 placeholder="EUR/USD · 15M"
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
               />
             </div>
           </div>
@@ -361,7 +361,7 @@ export function AdminCoursesPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Name this video lesson..."
-              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
@@ -374,7 +374,7 @@ export function AdminCoursesPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Explain what the student will master in this video..."
-              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
@@ -388,7 +388,7 @@ export function AdminCoursesPage() {
                 onClick={() => setVideoMode("supabase_storage")}
                 className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
                   videoMode === "supabase_storage"
-                    ? "bg-[#ffde02] text-black"
+                    ? "bg-[#ffb600] text-black"
                     : "text-[#9aa4b5] hover:text-white"
                 }`}
               >
@@ -399,7 +399,7 @@ export function AdminCoursesPage() {
                 onClick={() => setVideoMode("url")}
                 className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
                   videoMode === "url"
-                    ? "bg-[#ffde02] text-black"
+                    ? "bg-[#ffb600] text-black"
                     : "text-[#9aa4b5] hover:text-white"
                 }`}
               >
@@ -408,8 +408,8 @@ export function AdminCoursesPage() {
             </div>
 
             {videoMode === "supabase_storage" ? (
-              <div className="p-4 rounded-xl border border-dashed border-[#ffde02]/40 bg-[#161a24] text-center space-y-2">
-                <Upload size={20} className="mx-auto text-[#ffde02]" />
+              <div className="p-4 rounded-xl border border-dashed border-[#ffb600]/40 bg-[#161a24] text-center space-y-2">
+                <Upload size={20} className="mx-auto text-[#ffb600]" />
                 <p className="text-xs text-white font-semibold">
                   Select MP4 / WebM / MOV course video
                 </p>
@@ -417,10 +417,10 @@ export function AdminCoursesPage() {
                   type="file"
                   accept="video/*"
                   onChange={(e) => void handleVideoFileSelect(e.target.files?.[0] || null)}
-                  className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffde02] file:text-black hover:file:bg-[#ffe540] cursor-pointer"
+                  className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffb600] file:text-black hover:file:bg-[#ffc833] cursor-pointer"
                 />
                 {uploadingVideo && (
-                  <p className="text-[11px] text-[#ffde02] font-mono">
+                  <p className="text-[11px] text-[#ffb600] font-mono">
                     Uploading to Supabase Storage (course-videos)...
                   </p>
                 )}
@@ -432,7 +432,7 @@ export function AdminCoursesPage() {
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="https://... (MP4, HLS .m3u8, YouTube, Vimeo, or Supabase Storage URL)"
-              className="w-full mt-2 bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+              className="w-full mt-2 bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
@@ -444,14 +444,14 @@ export function AdminCoursesPage() {
               rows={2}
               value={takeawaysInput}
               onChange={(e) => setTakeawaysInput(e.target.value)}
-              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
             />
           </div>
 
           <button
             type="submit"
             disabled={savingLesson || uploadingVideo}
-            className="w-full py-3.5 px-5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
             <Plus size={15} />
             <span>
@@ -479,9 +479,9 @@ export function AdminCoursesPage() {
           </div>
 
           {previewLesson && (
-            <div className="p-4 rounded-xl bg-[#181c26] border border-[#ffde02]/40 space-y-3">
+            <div className="p-4 rounded-xl bg-[#181c26] border border-[#ffb600]/40 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#ffde02]">
+                <span className="text-xs font-bold text-[#ffb600]">
                   Previewing Lesson #{previewLesson.lessonNumber}: {previewLesson.title}
                 </span>
                 <button
@@ -519,7 +519,7 @@ export function AdminCoursesPage() {
 
           {selectedTrack.lessons.length === 0 ? (
             <div className="p-10 rounded-2xl bg-[#161a24] border border-dashed border-white/10 text-center space-y-2">
-              <Film size={28} className="mx-auto text-[#ffde02]" />
+              <Film size={28} className="mx-auto text-[#ffb600]" />
               <h3 className="text-sm font-bold text-white">
                 No videos uploaded to {selectedTrack.title} ({selectedTrack.level}) yet
               </h3>
@@ -535,7 +535,7 @@ export function AdminCoursesPage() {
                   className="p-3.5 rounded-xl bg-[#171b24] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-white/20 transition"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="w-8 h-8 rounded-lg bg-[#ffde02]/15 text-[#ffde02] font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                    <span className="w-8 h-8 rounded-lg bg-[#ffb600]/15 text-[#ffb600] font-mono text-xs font-bold flex items-center justify-center shrink-0">
                       {String(lesson.lessonNumber).padStart(2, "0")}
                     </span>
                     <div>
@@ -557,7 +557,7 @@ export function AdminCoursesPage() {
                       onClick={() => setPreviewLesson(lesson)}
                       className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-white transition cursor-pointer flex items-center gap-1"
                     >
-                      <Play size={12} className="text-[#ffde02]" /> Preview
+                      <Play size={12} className="text-[#ffb600]" /> Preview
                     </button>
                     <button
                       type="button"
@@ -593,10 +593,10 @@ export function AdminCoursesPage() {
       {/* ============================================================================
           SECTION 2: 4-LEVEL PDF UPLOAD & AI MULTI-QUESTION QUIZ GENERATOR
          ============================================================================ */}
-      <div className="bg-[#12151d] border border-[#ffde02]/30 rounded-2xl p-6 space-y-5">
+      <div className="bg-[#12151d] border border-[#ffb600]/30 rounded-2xl p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02] flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600] flex items-center gap-1.5">
               <Sparkles size={13} /> 4-LEVEL PDF AUTO-QUIZ ENGINE ·{" "}
               {selectedTrack.level.toUpperCase()} PDF ({selectedTrack.title.toUpperCase()})
             </span>
@@ -615,7 +615,7 @@ export function AdminCoursesPage() {
                 onClick={() => setSelectedCourseId(t.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
                   t.id === selectedCourseId
-                    ? "bg-[#ffde02] text-black border-[#ffde02]"
+                    ? "bg-[#ffb600] text-black border-[#ffb600]"
                     : "bg-white/5 text-[#9aa4b5] border-white/10 hover:text-white"
                 }`}
               >
@@ -626,7 +626,7 @@ export function AdminCoursesPage() {
         </div>
 
         {pdfFeedback && (
-          <div className="p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
             <CheckCircle2 size={16} />
             <span>{pdfFeedback}</span>
           </div>
@@ -634,16 +634,16 @@ export function AdminCoursesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <form onSubmit={handleGenerateLevelPdfQuiz} className="lg:col-span-5 space-y-4">
-            <div className="p-4 rounded-xl border border-dashed border-[#ffde02]/40 bg-[#161a24] space-y-2">
+            <div className="p-4 rounded-xl border border-dashed border-[#ffb600]/40 bg-[#161a24] space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <FileText size={16} className="text-[#ffde02]" />
+                <FileText size={16} className="text-[#ffb600]" />
                 <span>Select {selectedTrack.level} Level PDF Document</span>
               </div>
               <input
                 type="file"
                 accept="application/pdf,.pdf"
                 onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffde02] file:text-black hover:file:bg-[#ffe540] cursor-pointer"
+                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffb600] file:text-black hover:file:bg-[#ffc833] cursor-pointer"
               />
               {selectedTrack.levelPdfName && (
                 <p className="text-[11px] font-mono text-emerald-400">
@@ -688,14 +688,14 @@ export function AdminCoursesPage() {
                 value={pdfCurriculumNotes}
                 onChange={(e) => setPdfCurriculumNotes(e.target.value)}
                 placeholder={`Paste key points or topics from your ${selectedTrack.level} PDF to emphasize in the generated questions...`}
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
             </div>
 
             <button
               type="submit"
               disabled={generatingPdfQuiz}
-              className="w-full py-3.5 px-5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <Sparkles size={15} />
               <span>
@@ -721,7 +721,7 @@ export function AdminCoursesPage() {
                 <button
                   type="button"
                   onClick={() => void handleSaveEditedQuestions()}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#ffde02] text-black font-extrabold text-xs cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#ffb600] text-black font-extrabold text-xs cursor-pointer"
                 >
                   Save Quiz Changes
                 </button>
@@ -740,7 +740,7 @@ export function AdminCoursesPage() {
                     className="p-3.5 rounded-xl bg-[#11141c] border border-white/10 space-y-2"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-mono font-bold text-[#ffde02]">
+                      <span className="text-[11px] font-mono font-bold text-[#ffb600]">
                         Question {qIdx + 1} of {editingQuestions.length}
                       </span>
                       <button
@@ -775,7 +775,7 @@ export function AdminCoursesPage() {
                               copy[qIdx] = { ...copy[qIdx], correctIndex: optIdx };
                               setEditingQuestions(copy);
                             }}
-                            className="accent-[#ffde02] cursor-pointer"
+                            className="accent-[#ffb600] cursor-pointer"
                           />
                           <input
                             type="text"
@@ -810,7 +810,7 @@ export function AdminCoursesPage() {
       <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
               ACADEMY CERTIFICATE STUDIO · AUTOMATIC STUDENT NAME RENDERER
             </span>
             <h2 className="text-xl font-bold text-white mt-0.5">
@@ -820,11 +820,11 @@ export function AdminCoursesPage() {
               Upload your official certificate template image and set where the student&apos;s name is written. When any student completes 100% of a course, their own name is automatically rendered on this certificate for download.
             </p>
           </div>
-          <Award size={22} className="text-[#ffde02]" />
+          <Award size={22} className="text-[#ffb600]" />
         </div>
 
         {certStudioFeedback && (
-          <div className="p-3.5 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
             <CheckCircle2 size={16} />
             <span>{certStudioFeedback}</span>
           </div>
@@ -833,8 +833,8 @@ export function AdminCoursesPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left 5 Cols: Template Image Upload & Coordinate Sliders */}
           <div className="lg:col-span-5 space-y-4 bg-[#161a24] border border-white/10 rounded-xl p-5">
-            <div className="p-4 rounded-xl border border-dashed border-[#ffde02]/40 bg-[#12151d] text-center space-y-2">
-              <ImageIcon size={20} className="mx-auto text-[#ffde02]" />
+            <div className="p-4 rounded-xl border border-dashed border-[#ffb600]/40 bg-[#12151d] text-center space-y-2">
+              <ImageIcon size={20} className="mx-auto text-[#ffb600]" />
               <p className="text-xs font-bold text-white">
                 Upload Blank Certificate Template Image (PNG / JPG)
               </p>
@@ -842,10 +842,10 @@ export function AdminCoursesPage() {
                 type="file"
                 accept="image/*"
                 onChange={(e) => void handleCertTemplateUpload(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffde02] file:text-black hover:file:bg-[#ffe540] cursor-pointer"
+                className="block w-full text-xs text-[#9aa4b5] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ffb600] file:text-black hover:file:bg-[#ffc833] cursor-pointer"
               />
               {uploadingCertTemplate && (
-                <p className="text-[11px] font-mono text-[#ffde02]">Uploading template...</p>
+                <p className="text-[11px] font-mono text-[#ffb600]">Uploading template...</p>
               )}
             </div>
 
@@ -874,7 +874,7 @@ export function AdminCoursesPage() {
                   onChange={(e) =>
                     setCertTemplate({ ...certTemplate, nameXPct: Number(e.target.value) })
                   }
-                  className="w-full accent-[#ffde02]"
+                  className="w-full accent-[#ffb600]"
                 />
               </div>
               <div>
@@ -889,7 +889,7 @@ export function AdminCoursesPage() {
                   onChange={(e) =>
                     setCertTemplate({ ...certTemplate, nameYPct: Number(e.target.value) })
                   }
-                  className="w-full accent-[#ffde02]"
+                  className="w-full accent-[#ffb600]"
                 />
               </div>
             </div>
@@ -933,7 +933,7 @@ export function AdminCoursesPage() {
                   onChange={(e) =>
                     setCertTemplate({ ...certTemplate, showCourseTitle: e.target.checked })
                   }
-                  className="accent-[#ffde02]"
+                  className="accent-[#ffb600]"
                 />
                 <span>Print Course Track Title on Certificate</span>
               </label>
@@ -943,7 +943,7 @@ export function AdminCoursesPage() {
               <button
                 type="button"
                 onClick={() => void handleSaveCertTemplate()}
-                className="flex-1 py-3 px-4 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
               >
                 Save Certificate Template Settings
               </button>
@@ -967,7 +967,7 @@ export function AdminCoursesPage() {
           <div className="lg:col-span-7 space-y-3">
             <div className="flex items-center justify-between text-xs text-[#9aa4b5]">
               <span>Live Student Certificate Preview ({certSampleStudentName})</span>
-              <span className="font-mono text-[#ffde02]">1600 × 1130 High-Res PNG</span>
+              <span className="font-mono text-[#ffb600]">1600 × 1130 High-Res PNG</span>
             </div>
             <div className="rounded-2xl overflow-hidden border border-white/15 bg-[#090b10] shadow-2xl">
               {certPreviewDataUrl ? (
@@ -1010,7 +1010,7 @@ export function AdminCoursesPage() {
                 <tbody>
                   {certificates.map((c) => (
                     <tr key={c.id}>
-                      <td className="font-mono text-xs font-bold text-[#ffde02]">
+                      <td className="font-mono text-xs font-bold text-[#ffb600]">
                         {c.certificateCode}
                       </td>
                       <td>
@@ -1330,7 +1330,7 @@ export function AdminLiveStudioPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
+          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffb600]">
             LIVE BROADCAST &amp; RTMP STUDIO
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
@@ -1344,7 +1344,7 @@ export function AdminLiveStudioPage() {
           <button
             type="button"
             onClick={() => void handleScheduleNewSession()}
-            className="px-4 py-2.5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer"
           >
             <Plus size={14} /> Schedule New Session
           </button>
@@ -1368,13 +1368,13 @@ export function AdminLiveStudioPage() {
               onClick={() => setActiveSessionId(s.id)}
               className={`px-4 py-3 rounded-xl border cursor-pointer transition flex items-center gap-3 ${
                 s.id === activeSessionId
-                  ? "bg-[#171c26] border-[#ffde02] text-white"
+                  ? "bg-[#171c26] border-[#ffb600] text-white"
                   : "bg-[#12151d] border-white/10 text-[#9aa4b5] hover:text-white"
               }`}
             >
               <Radio
                 size={15}
-                className={s.status === "live" ? "text-red-400 animate-pulse" : "text-[#ffde02]"}
+                className={s.status === "live" ? "text-red-400 animate-pulse" : "text-[#ffb600]"}
               />
               <div>
                 <div className="text-xs font-bold text-white">{s.title}</div>
@@ -1403,7 +1403,7 @@ export function AdminLiveStudioPage() {
       )}
 
       {studioFeedback && (
-        <div className="p-4 rounded-xl bg-[#ffde02]/10 border border-[#ffde02]/30 text-xs text-[#ffde02] flex items-center gap-2">
+        <div className="p-4 rounded-xl bg-[#ffb600]/10 border border-[#ffb600]/30 text-xs text-[#ffb600] flex items-center gap-2">
           <CheckCircle2 size={16} />
           <span>{studioFeedback}</span>
         </div>
@@ -1415,7 +1415,7 @@ export function AdminLiveStudioPage() {
           <div className="bg-[#12151d] border border-white/10 rounded-2xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                   LIVE BROADCAST MONITOR · STATUS: {(activeSession?.status || "READY").toUpperCase()}
                 </span>
                 <h2 className="text-lg font-bold text-white mt-0.5">
@@ -1428,7 +1428,7 @@ export function AdminLiveStudioPage() {
                   <button
                     type="button"
                     onClick={() => void handleStartScreenShare()}
-                    className="px-4 py-2 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
                   >
                     <MonitorUp size={15} /> Share Screen &amp; Go Live
                   </button>
@@ -1472,7 +1472,7 @@ export function AdminLiveStudioPage() {
               />
               {!isSharingScreen && (
                 <div className="text-center p-6 space-y-2">
-                  <MonitorUp size={36} className="mx-auto text-[#ffde02]" />
+                  <MonitorUp size={36} className="mx-auto text-[#ffb600]" />
                   <p className="text-sm font-bold text-white">
                     Click &ldquo;Share Screen &amp; Go Live&rdquo; to broadcast your trading terminal
                   </p>
@@ -1502,7 +1502,7 @@ export function AdminLiveStudioPage() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
                 />
               </div>
               <div>
@@ -1514,7 +1514,7 @@ export function AdminLiveStudioPage() {
                   required
                   value={scheduledDateInput}
                   onChange={(e) => setScheduledDateInput(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
                 />
               </div>
             </div>
@@ -1528,7 +1528,7 @@ export function AdminLiveStudioPage() {
                   type="text"
                   value={focusPair}
                   onChange={(e) => setFocusPair(e.target.value)}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
                 />
               </div>
               <div>
@@ -1539,7 +1539,7 @@ export function AdminLiveStudioPage() {
                   type="number"
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffde02]"
+                  className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-[#ffb600]"
                 />
               </div>
             </div>
@@ -1552,13 +1552,13 @@ export function AdminLiveStudioPage() {
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="w-full bg-[#181c26] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
             </div>
 
             <div className="p-4 rounded-xl bg-[#161a24] border border-white/10 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold uppercase text-[#ffde02]">
+                <span className="text-[11px] font-mono font-bold uppercase text-[#ffb600]">
                   RTMP Server &amp; HLS Stream Configuration (OBS / External Stream)
                 </span>
               </div>
@@ -1583,7 +1583,7 @@ export function AdminLiveStudioPage() {
                       type="text"
                       value={rtmpStreamKey}
                       onChange={(e) => setRtmpStreamKey(e.target.value)}
-                      className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-[#ffde02] text-xs font-mono"
+                      className="w-full bg-[#0e1118] border border-white/10 rounded-lg px-3 py-2 text-[#ffb600] text-xs font-mono"
                     />
                     <button
                       type="button"
@@ -1615,7 +1615,7 @@ export function AdminLiveStudioPage() {
 
             <button
               type="submit"
-              className="w-full py-3.5 px-5 rounded-xl bg-[#ffde02] hover:bg-[#ffe540] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer"
+              className="w-full py-3.5 px-5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer"
             >
               {activeSession
                 ? "Save Session & Update Student Countdown Clock"
@@ -1628,7 +1628,7 @@ export function AdminLiveStudioPage() {
         <div className="lg:col-span-5 bg-[#12151d] border border-white/10 rounded-2xl p-6 flex flex-col h-[680px]">
           <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffde02]">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                 REAL-TIME ROOM CHAT
               </span>
               <h3 className="text-base font-bold text-white">
@@ -1658,9 +1658,9 @@ export function AdminLiveStudioPage() {
                   key={m.id}
                   className={`p-3 rounded-xl border text-xs ${
                     m.isHost
-                      ? "bg-[#ffde02]/10 border-[#ffde02]/40"
+                      ? "bg-[#ffb600]/10 border-[#ffb600]/40"
                       : m.isPinned
-                      ? "bg-white/10 border-[#ffde02]/30"
+                      ? "bg-white/10 border-[#ffb600]/30"
                       : "bg-[#171b24] border-white/10"
                   }`}
                 >
@@ -1671,18 +1671,18 @@ export function AdminLiveStudioPage() {
                           src={m.senderAvatar}
                           alt={m.senderName}
                           referrerPolicy="no-referrer"
-                          className="w-6 h-6 rounded-full object-cover border border-[#ffde02]/40"
+                          className="w-6 h-6 rounded-full object-cover border border-[#ffb600]/40"
                         />
                       ) : (
-                        <span className="w-6 h-6 rounded-full bg-white/10 text-[#ffde02] font-bold text-[10px] flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full bg-white/10 text-[#ffb600] font-bold text-[10px] flex items-center justify-center">
                           {m.senderName.slice(0, 2).toUpperCase()}
                         </span>
                       )}
-                      <strong className={m.isHost ? "text-[#ffde02]" : "text-white"}>
+                      <strong className={m.isHost ? "text-[#ffb600]" : "text-white"}>
                         {m.senderName}
                       </strong>
                       {m.isPinned && (
-                        <span className="text-[10px] font-mono text-[#ffde02]">· PINNED</span>
+                        <span className="text-[10px] font-mono text-[#ffb600]">· PINNED</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -1694,7 +1694,7 @@ export function AdminLiveStudioPage() {
                             fetchSessionChatMessagesFromDb(activeSession.id).then(setChatMessages)
                           )
                         }
-                        className="text-[#8c95a6] hover:text-[#ffde02] p-1 cursor-pointer"
+                        className="text-[#8c95a6] hover:text-[#ffb600] p-1 cursor-pointer"
                         title="Pin / Unpin message"
                       >
                         <Pin size={12} />
@@ -1726,12 +1726,12 @@ export function AdminLiveStudioPage() {
               value={hostChatInput}
               onChange={(e) => setHostChatInput(e.target.value)}
               placeholder="Broadcast message to live room as Pastor Mike..."
-              className="flex-1 bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+              className="flex-1 bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
             />
             <button
               type="submit"
               disabled={!activeSession}
-              className="px-4 py-2.5 rounded-xl bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
             >
               <Send size={13} /> Send
             </button>
@@ -1802,7 +1802,7 @@ export function AdminMentorInboxPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between border-b border-white/10 pb-5">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffde02]">
+          <span className="text-[11px] font-mono uppercase tracking-widest text-[#ffb600]">
             DIRECT MENTORSHIP INBOX
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">
@@ -1823,7 +1823,7 @@ export function AdminMentorInboxPage() {
 
       {studentThreads.length === 0 ? (
         <div className="bg-[#12151d] border border-white/10 rounded-2xl p-12 text-center space-y-2">
-          <MessageSquare size={32} className="mx-auto text-[#ffde02]" />
+          <MessageSquare size={32} className="mx-auto text-[#ffb600]" />
           <h3 className="text-base font-bold text-white">No student questions yet</h3>
           <p className="text-xs text-[#8c95a6]">
             When students send a mentorship question from their portal, their conversation thread and profile photo appear here.
@@ -1845,7 +1845,7 @@ export function AdminMentorInboxPage() {
                   onClick={() => setSelectedEmail(email)}
                   className={`w-full p-3.5 rounded-xl text-left transition cursor-pointer flex items-center gap-3 border ${
                     selectedEmail === email
-                      ? "bg-[#181d28] border-[#ffde02]"
+                      ? "bg-[#181d28] border-[#ffb600]"
                       : "bg-[#151922] border-white/5 hover:border-white/20"
                   }`}
                 >
@@ -1854,10 +1854,10 @@ export function AdminMentorInboxPage() {
                       src={studentMsg.studentAvatar}
                       alt={studentMsg.studentName}
                       referrerPolicy="no-referrer"
-                      className="w-10 h-10 rounded-full object-cover border border-[#ffde02]/40 shrink-0"
+                      className="w-10 h-10 rounded-full object-cover border border-[#ffb600]/40 shrink-0"
                     />
                   ) : (
-                    <span className="w-10 h-10 rounded-full bg-[#ffde02]/15 text-[#ffde02] font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-10 h-10 rounded-full bg-[#ffb600]/15 text-[#ffb600] font-bold text-xs flex items-center justify-center shrink-0">
                       {studentMsg.studentName.slice(0, 2).toUpperCase()}
                     </span>
                   )}
@@ -1881,7 +1881,7 @@ export function AdminMentorInboxPage() {
                 </h3>
                 <span className="text-xs text-[#8c95a6]">{selectedEmail}</span>
               </div>
-              <span className="text-xs font-mono text-[#ffde02]">Direct 1-on-1 Mentorship</span>
+              <span className="text-xs font-mono text-[#ffb600]">Direct 1-on-1 Mentorship</span>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
@@ -1890,12 +1890,12 @@ export function AdminMentorInboxPage() {
                   key={m.id}
                   className={`p-3.5 rounded-xl border text-xs max-w-[85%] ${
                     m.senderRole === "admin"
-                      ? "ml-auto bg-[#ffde02]/10 border-[#ffde02]/40 text-white"
+                      ? "ml-auto bg-[#ffb600]/10 border-[#ffb600]/40 text-white"
                       : "bg-[#171b24] border-white/10 text-[#d6dde8]"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-4 mb-1 text-[10px] font-mono text-[#9aa4b5]">
-                    <strong className={m.senderRole === "admin" ? "text-[#ffde02]" : "text-white"}>
+                    <strong className={m.senderRole === "admin" ? "text-[#ffb600]" : "text-white"}>
                       {m.senderRole === "admin" ? "Pastor Mike (Founder)" : m.studentName}
                     </strong>
                     <span>{new Date(m.createdAt).toLocaleString()}</span>
@@ -1911,12 +1911,12 @@ export function AdminMentorInboxPage() {
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder="Write a direct reply to this student..."
-                className="flex-1 bg-[#181c26] border border-white/15 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffde02]"
+                className="flex-1 bg-[#181c26] border border-white/15 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-[#ffb600]"
               />
               <button
                 type="submit"
                 disabled={sending}
-                className="px-5 py-2.5 rounded-xl bg-[#ffde02] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-[#ffb600] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
               >
                 {sending ? "Sending..." : "Send Reply"}
               </button>

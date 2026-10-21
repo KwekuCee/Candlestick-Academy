@@ -32,6 +32,22 @@ import {
   AdminLiveSessionsPage,
   AdminMentorInboxPage,
 } from "./AdminStudioPages";
+import { getSavedActiveRoute, saveActiveRoute } from "./BrandLogo";
+
+// Restore active route on page/iframe refresh before createBrowserRouter initializes
+if (typeof window !== "undefined") {
+  const currentFull =
+    window.location.pathname + window.location.search + window.location.hash;
+
+  if (window.location.pathname === "/" && !window.location.search && !window.location.hash) {
+    const savedRoute = getSavedActiveRoute();
+    if (savedRoute && savedRoute !== "/" && savedRoute.startsWith("/")) {
+      window.history.replaceState(null, "", savedRoute);
+    }
+  } else {
+    saveActiveRoute(currentFull);
+  }
+}
 
 export const router = createBrowserRouter([
   { path: "/", Component: HomePage },
@@ -68,3 +84,11 @@ export const router = createBrowserRouter([
   },
   { path: "*", Component: NotFoundPage },
 ]);
+
+if (typeof window !== "undefined") {
+  router.subscribe((state) => {
+    const fullPath =
+      state.location.pathname + state.location.search + state.location.hash;
+    saveActiveRoute(fullPath);
+  });
+}
