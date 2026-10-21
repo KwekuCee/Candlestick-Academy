@@ -4111,9 +4111,11 @@ export const MAX_MERCH_GIVEAWAY_SPOTS = 20;
 
 export function getMoolreConfig(): MoolreGatewayConfig {
   const defaultCfg: MoolreGatewayConfig = {
-    apiUser: import.meta.env.VITE_MOOLRE_API_USER || "candlesticks_academy",
-    publicKey: import.meta.env.VITE_MOOLRE_PUBLIC_KEY || "",
-    accountNumber: import.meta.env.VITE_MOOLRE_ACCOUNT_NUMBER || "",
+    apiUser: import.meta.env.VITE_MOOLRE_API_USER || "PRIME HAVEN",
+    publicKey:
+      import.meta.env.VITE_MOOLRE_PUBLIC_KEY ||
+      "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjExMDE1OSwid2FsbGV0aWQiOiI3NjQ4NCIsImV4cCI6MTk1NjUyNzk5OX0.m5VnvN1F-UThFIEk-NBrSw8RDlPyzyjw0XqBtqKIJcI",
+    accountNumber: import.meta.env.VITE_MOOLRE_ACCOUNT_NUMBER || "11015906076484",
     businessEmail: "mike.vinci77@gmail.com",
     currency: (import.meta.env.VITE_MOOLRE_CURRENCY as "GHS" | "USD" | "NGN") || "GHS",
     usdToGhsRate: 15.5,
