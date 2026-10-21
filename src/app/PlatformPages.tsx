@@ -3768,7 +3768,7 @@ export function SignalFeedPage() {
           <button
             key={key}
             type="button"
-            className={tab === key ? "bg-[#ffde02] text-black font-bold" : ""}
+            className={tab === key ? "active bg-[#ffde02] text-black font-bold" : ""}
             onClick={() => setTab(key)}
           >
             {label}
