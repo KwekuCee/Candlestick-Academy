@@ -3,6 +3,7 @@ import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { registerSW } from "virtual:pwa-register";
 import { MobileCandlestickSplash } from "./PWAInstallPrompt";
+import { Analytics } from "@vercel/analytics/react";
 
 if (typeof window !== "undefined") {
   registerSW({ immediate: true });
@@ -57,6 +58,7 @@ export default function App() {
         />
       )}
       <RouterProvider router={router} />
+      <Analytics />
     </>
   );
 }
