@@ -4064,6 +4064,8 @@ export interface MoolreGatewayConfig {
   apiUser: string;
   publicKey: string;
   apiPubKey?: string;
+  secretKey?: string;
+  apiSecret?: string;
   accountNumber: string;
   businessEmail: string;
   currency: "GHS" | "USD" | "NGN";
@@ -4359,14 +4361,22 @@ export async function processMoolrePaymentCheckout(params: {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2500);
 
+    const secretVal = cfg.secretKey || cfg.apiSecret || "";
+    const moolreHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-API-USER": cfg.apiUser || "PRIME HAVEN",
+      "X-API-PUBKEY": cfg.publicKey || "default",
+    };
+    if (secretVal) {
+      moolreHeaders["X-API-SECRET"] = secretVal;
+      moolreHeaders["X-API-KEY"] = secretVal;
+      moolreHeaders["Authorization"] = `Bearer ${secretVal}`;
+    }
+
     if (params.paymentMethod === "hosted_link" || params.paymentMethod === "moolre_link") {
       const res = await fetch("https://api.moolre.com/embed/link", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-USER": cfg.apiUser || "PRIME HAVEN",
-          "X-API-PUBKEY": cfg.publicKey || "default",
-        },
+        headers: moolreHeaders,
         body: JSON.stringify({
           type: 1,
           amount: String(amountCharged),
@@ -4399,11 +4409,7 @@ export async function processMoolrePaymentCheckout(params: {
       const netKey = params.network || "MTN";
       await fetch("https://api.moolre.com/open/transact/payment", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-USER": cfg.apiUser || "PRIME HAVEN",
-          "X-API-PUBKEY": cfg.publicKey || "default",
-        },
+        headers: moolreHeaders,
         body: JSON.stringify({
           type: 1,
           channel: channelMap[netKey] || 13,

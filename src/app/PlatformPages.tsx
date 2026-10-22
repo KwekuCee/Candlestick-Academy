@@ -8224,19 +8224,35 @@ export function PaymentsPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-white mb-1">
-                Moolre Public API Key (X-API-PUBKEY)
-              </label>
-              <input
-                type="password"
-                value={moolreConfig.apiPubKey}
-                onChange={(e) =>
-                  setMoolreConfig({ ...moolreConfig, apiPubKey: e.target.value })
-                }
-                placeholder="Paste your Moolre X-API-PUBKEY..."
-                className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Moolre Public API Key (X-API-PUBKEY)
+                </label>
+                <input
+                  type="password"
+                  value={moolreConfig.apiPubKey || moolreConfig.publicKey || ""}
+                  onChange={(e) =>
+                    setMoolreConfig({ ...moolreConfig, apiPubKey: e.target.value, publicKey: e.target.value })
+                  }
+                  placeholder="Paste your Moolre Public Key..."
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">
+                  Moolre Secret Key / API Secret (X-API-SECRET)
+                </label>
+                <input
+                  type="password"
+                  value={moolreConfig.secretKey || moolreConfig.apiSecret || ""}
+                  onChange={(e) =>
+                    setMoolreConfig({ ...moolreConfig, secretKey: e.target.value, apiSecret: e.target.value })
+                  }
+                  placeholder="Paste your Moolre Secret Key..."
+                  className="w-full h-11 bg-[#141821] border border-white/15 rounded-xl px-3.5 text-xs font-mono text-white"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
