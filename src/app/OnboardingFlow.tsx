@@ -15,6 +15,7 @@ import {
   getStoredCurrentUser,
   getStoredRoster,
   normalizeUsername,
+  redirectToRolePortal,
   refreshRosterFromSupabase,
   saveStoredCurrentUser,
   saveStoredRoster,
@@ -1453,7 +1454,7 @@ export function OnboardingFlow() {
                 type="button"
                 onClick={() => {
                   window.dispatchEvent(new Event("candlesticks_trigger_opener"));
-                  navigate("/dashboard");
+                  redirectToRolePortal("student", "/dashboard", (p) => navigate(p));
                 }}
                 className="w-full sm:w-auto font-extrabold text-sm uppercase tracking-wider px-8 py-3.5 rounded-full shadow-[0_10px_25px_rgba(255,182,0,0.22)] hover:shadow-[0_12px_30px_rgba(255,182,0,0.35)] hover:-translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
                 style={{

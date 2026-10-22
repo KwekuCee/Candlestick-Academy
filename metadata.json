@@ -1,6 +1,6 @@
 {
-  "name": "Candlestick Academy",
-  "description": "Candlestick Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.",
+  "name": "Candlesticks Academy",
+  "description": "Candlesticks Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.",
   "permissions": [],
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

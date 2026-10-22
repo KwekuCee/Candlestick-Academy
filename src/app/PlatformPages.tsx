@@ -1,16 +1,20 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
+  ADMIN_PORTAL_DOMAIN,
   EXNESS_PARTNER_CLIENTS,
   EXNESS_PARTNER_CLIENTS_UPGRADE_SQL,
   EXNESS_PARTNER_TOTALS,
   ExnessConfig,
   ExnessStudent,
+  MAIN_ACADEMY_DOMAIN,
   OFFICIAL_PARTNER_ACCOUNT_ID,
+  STUDENT_PORTAL_DOMAIN,
   SUPABASE_PROJECT_REF,
   SUPABASE_PROJECT_URL,
   SUPABASE_SCHEMA_SQL,
   authenticatePortalLogin,
+  buildRolePortalUrl,
   checkExnessAccountDeposit,
   checkUsernameAvailability,
   getStoredConfig,
@@ -20,6 +24,7 @@ import {
   logoutCurrentUser,
   normalizeUsername,
   pushSchemaToSupabaseManagementApi,
+  redirectToRolePortal,
   refreshRosterFromSupabase,
   registerApprovedTradingAccountInSupabase,
   saveStoredConfig,
@@ -960,12 +965,27 @@ export function PortalLayout() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
 
-  // Protect /admin/* routes so only authenticated `master` admin sessions can access them
+  // Protect /admin/* routes and enforce master.candlesticksacademy.online for admin & stu.candlesticksacademy.online for students
   useEffect(() => {
-    if (admin && !isMasterAdminAuthenticated()) {
-      nav("/login", { replace: true });
+    const currentPath = loc.pathname + loc.search + loc.hash;
+    if (admin) {
+      if (!isMasterAdminAuthenticated()) {
+        nav("/login", { replace: true });
+        return;
+      }
+      if (typeof window !== "undefined") {
+        const host = window.location.hostname.toLowerCase();
+        if (host.endsWith(MAIN_ACADEMY_DOMAIN) && host !== ADMIN_PORTAL_DOMAIN) {
+          redirectToRolePortal("admin", currentPath);
+        }
+      }
+    } else if (typeof window !== "undefined") {
+      const host = window.location.hostname.toLowerCase();
+      if (host.endsWith(MAIN_ACADEMY_DOMAIN) && host !== STUDENT_PORTAL_DOMAIN) {
+        redirectToRolePortal("student", currentPath);
+      }
     }
-  }, [admin, loc.pathname, nav]);
+  }, [admin, loc.pathname, loc.search, loc.hash, nav]);
 
   // Load client notifications & audit log alerts pertaining to this client
   useEffect(() => {
@@ -1078,10 +1098,16 @@ export function PortalLayout() {
             </NavLink>
           )}
           {admin && (
-            <Link to="/dashboard">
+            <a
+              href={buildRolePortalUrl("student", "/dashboard")}
+              onClick={(e) => {
+                e.preventDefault();
+                redirectToRolePortal("student", "/dashboard", (p) => nav(p));
+              }}
+            >
               <Icon name="book" />
               Switch to Client View
-            </Link>
+            </a>
           )}
           <button
             type="button"
@@ -1356,7 +1382,7 @@ export function RegisterPage() {
     <Auth quote="Your first goal isn't profit. It's learning how to make consistently good decisions.">
       <div className="auth-form">
         <p className="p-eyebrow">START FREE THIS MONTH</p>
-        <h1>Welcome to Candlesticks</h1>
+        <h1>Welcome to Candlesticks Academy</h1>
         <p>Proceed through our guided onboarding to link your Exness account and claim your free month.</p>
         <button
           className="p-button primary rounded-full w-full py-4 text-sm font-bold uppercase tracking-wider"
@@ -1397,9 +1423,9 @@ export function LoginPage() {
 
     window.dispatchEvent(new Event("candlesticks_trigger_opener"));
     if (res.role === "admin") {
-      nav("/admin");
+      redirectToRolePortal("admin", "/admin", (p) => nav(p));
     } else {
-      nav("/dashboard");
+      redirectToRolePortal("student", "/dashboard", (p) => nav(p));
     }
   }
 

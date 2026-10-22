@@ -26,9 +26,9 @@ export default defineConfig(({ mode }) => {
         includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png', 'ceo.png'],
         manifest: {
           id: '/',
-          name: 'Candlestick Academy',
-          short_name: 'Candlesticks',
-          description: 'Candlestick Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.',
+          name: 'Candlesticks Academy',
+          short_name: 'Candlesticks Academy',
+          description: 'Candlesticks Academy trading mentorship platform, courses, live trading sessions, market signals, and student portal.',
           theme_color: '#101216',
           background_color: '#101216',
           display: 'standalone',
@@ -164,7 +164,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
 
-  const title = config.title ?? "Figma Make App"
+  const title = config.title ?? "Candlesticks Academy"
   const description = config.description ?? ''
   // Imported HTML keeps its own favicon; new Makes default to the Make product icon.
   const favicon = config.icons?.icon ?? '/favicon-ca05.png'

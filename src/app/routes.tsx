@@ -35,13 +35,30 @@ import {
   AdminMentorInboxPage,
 } from "./AdminStudioPages";
 import { getSavedActiveRoute, saveActiveRoute } from "./BrandLogo";
+import {
+  ADMIN_PORTAL_DOMAIN,
+  STUDENT_PORTAL_DOMAIN,
+  hydrateCrossDomainSession,
+  isMasterAdminAuthenticated,
+} from "./exnessStore";
 
-// Restore active route on page/iframe refresh before createBrowserRouter initializes
+// Hydrate cross-subdomain session (?ca_sso or .candlesticksacademy.online cookie) and route subdomain roots before createBrowserRouter initializes
 if (typeof window !== "undefined") {
+  document.title = "Candlesticks Academy";
+  hydrateCrossDomainSession();
+
+  const host = window.location.hostname.toLowerCase();
   const currentFull =
     window.location.pathname + window.location.search + window.location.hash;
 
-  if (window.location.pathname === "/" && !window.location.search && !window.location.hash) {
+  if (host === ADMIN_PORTAL_DOMAIN && window.location.pathname === "/") {
+    const dest = isMasterAdminAuthenticated() ? "/admin" : "/login";
+    window.history.replaceState(null, "", dest);
+  } else if (host === STUDENT_PORTAL_DOMAIN && window.location.pathname === "/") {
+    const hasStudent = Boolean(localStorage.getItem("candlesticks_current_student"));
+    const dest = hasStudent ? "/dashboard" : "/login";
+    window.history.replaceState(null, "", dest);
+  } else if (window.location.pathname === "/" && !window.location.search && !window.location.hash) {
     const savedRoute = getSavedActiveRoute();
     if (savedRoute && savedRoute !== "/" && savedRoute.startsWith("/")) {
       window.history.replaceState(null, "", savedRoute);

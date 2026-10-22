@@ -1028,6 +1028,140 @@ export async function registerApprovedTradingAccountInSupabase(params: {
   };
 }
 
+export const MAIN_ACADEMY_DOMAIN = "candlesticksacademy.online";
+export const STUDENT_PORTAL_DOMAIN = "stu.candlesticksacademy.online";
+export const ADMIN_PORTAL_DOMAIN = "master.candlesticksacademy.online";
+
+const STUDENT_COOKIE_NAME = "ca_student_session";
+const ADMIN_COOKIE_NAME = "ca_admin_session";
+
+function encodeBase64Utf8(str: string): string {
+  try {
+    return btoa(encodeURIComponent(str));
+  } catch {
+    return "";
+  }
+}
+
+function decodeBase64Utf8(encoded: string): string {
+  try {
+    return decodeURIComponent(atob(encoded));
+  } catch {
+    return "";
+  }
+}
+
+function setCrossSubdomainCookie(name: string, value: string, maxAgeSec = 60 * 60 * 24 * 30) {
+  if (typeof document === "undefined") return;
+  try {
+    const host = window.location.hostname.toLowerCase();
+    const isSecure = window.location.protocol === "https:";
+    const secureFlag = isSecure ? "; Secure" : "";
+    document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
+    if (host.endsWith(MAIN_ACADEMY_DOMAIN)) {
+      document.cookie = `${name}=${encodeURIComponent(value)}; Domain=.${MAIN_ACADEMY_DOMAIN}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
+    }
+  } catch {
+    // ignore cookie errors
+  }
+}
+
+function getCrossSubdomainCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  try {
+    const cookies = document.cookie ? document.cookie.split("; ") : [];
+    for (const part of cookies) {
+      const eqIdx = part.indexOf("=");
+      if (eqIdx < 0) continue;
+      const k = part.slice(0, eqIdx).trim();
+      if (k === name) {
+        return decodeURIComponent(part.slice(eqIdx + 1));
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function clearCrossSubdomainCookie(name: string) {
+  if (typeof document === "undefined") return;
+  try {
+    const host = window.location.hostname.toLowerCase();
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+    if (host.endsWith(MAIN_ACADEMY_DOMAIN)) {
+      document.cookie = `${name}=; Domain=.${MAIN_ACADEMY_DOMAIN}; Path=/; Max-Age=0; SameSite=Lax`;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Hydrate session on subdomain arrival via ?ca_sso=... URL handoff or shared .candlesticksacademy.online cookie
+export function hydrateCrossDomainSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    const ssoToken = url.searchParams.get("ca_sso");
+    if (ssoToken) {
+      const rawJson = decodeBase64Utf8(ssoToken);
+      if (rawJson) {
+        const parsed = JSON.parse(rawJson) as {
+          role?: "admin" | "student";
+          student?: ExnessStudent;
+        };
+        if (parsed.role === "admin") {
+          localStorage.setItem("candlesticks_admin_authenticated", "true");
+          setCrossSubdomainCookie(ADMIN_COOKIE_NAME, "true");
+        } else if (parsed.role === "student" && parsed.student) {
+          localStorage.setItem("candlesticks_current_student", JSON.stringify(parsed.student));
+          localStorage.removeItem("candlesticks_admin_authenticated");
+          if (parsed.student.email && (parsed.student.username || parsed.student.accountPassword)) {
+            saveLocalCredentialEntry(
+              parsed.student.email,
+              parsed.student.username,
+              parsed.student.accountPassword
+            );
+          }
+          setCrossSubdomainCookie(
+            STUDENT_COOKIE_NAME,
+            encodeBase64Utf8(JSON.stringify(parsed.student))
+          );
+        }
+      }
+      url.searchParams.delete("ca_sso");
+      const cleanPath =
+        url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "") + url.hash;
+      window.history.replaceState(null, "", cleanPath);
+    }
+
+    // Also hydrate from shared .candlesticksacademy.online cookie if localStorage on this subdomain is empty
+    if (localStorage.getItem("candlesticks_admin_authenticated") !== "true") {
+      if (getCrossSubdomainCookie(ADMIN_COOKIE_NAME) === "true") {
+        localStorage.setItem("candlesticks_admin_authenticated", "true");
+      }
+    }
+    if (!localStorage.getItem("candlesticks_current_student")) {
+      const cookieStudentEncoded = getCrossSubdomainCookie(STUDENT_COOKIE_NAME);
+      if (cookieStudentEncoded) {
+        const decoded = decodeBase64Utf8(cookieStudentEncoded);
+        if (decoded) {
+          const parsedStudent = JSON.parse(decoded) as ExnessStudent;
+          if (parsedStudent && parsedStudent.email) {
+            localStorage.setItem("candlesticks_current_student", JSON.stringify(parsedStudent));
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore hydration errors
+  }
+}
+
+if (typeof window !== "undefined") {
+  hydrateCrossDomainSession();
+}
+
 export function getStoredCurrentUser(): ExnessStudent {
   try {
     const raw = localStorage.getItem("candlesticks_current_student");
@@ -1039,6 +1173,17 @@ export function getStoredCurrentUser(): ExnessStudent {
         username: parsed.username || creds?.username,
         accountPassword: parsed.accountPassword || creds?.accountPassword,
       };
+    }
+    const cookieEncoded = getCrossSubdomainCookie(STUDENT_COOKIE_NAME);
+    if (cookieEncoded) {
+      const decoded = decodeBase64Utf8(cookieEncoded);
+      if (decoded) {
+        const parsed = JSON.parse(decoded) as ExnessStudent;
+        if (parsed && parsed.email) {
+          localStorage.setItem("candlesticks_current_student", JSON.stringify(parsed));
+          return parsed;
+        }
+      }
     }
   } catch (e) {
     console.error("Failed to read student from localStorage", e);
@@ -1057,6 +1202,7 @@ export function saveStoredCurrentUser(user: ExnessStudent, password?: string) {
       saveLocalCredentialEntry(updatedUser.email, updatedUser.username, updatedUser.accountPassword);
     }
     localStorage.setItem("candlesticks_current_student", JSON.stringify(updatedUser));
+    setCrossSubdomainCookie(STUDENT_COOKIE_NAME, encodeBase64Utf8(JSON.stringify(updatedUser)));
     window.dispatchEvent(new Event("candlesticks_user_updated"));
     void syncStudentToSupabase(updatedUser, password || updatedUser.accountPassword);
   } catch (e) {
@@ -1078,7 +1224,14 @@ export function normalizeUsername(raw: string): string {
 
 export function isMasterAdminAuthenticated(): boolean {
   try {
-    return localStorage.getItem("candlesticks_admin_authenticated") === "true";
+    if (localStorage.getItem("candlesticks_admin_authenticated") === "true") {
+      return true;
+    }
+    if (getCrossSubdomainCookie(ADMIN_COOKIE_NAME) === "true") {
+      localStorage.setItem("candlesticks_admin_authenticated", "true");
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1088,13 +1241,64 @@ export function setMasterAdminAuthenticated(authenticated: boolean) {
   try {
     if (authenticated) {
       localStorage.setItem("candlesticks_admin_authenticated", "true");
+      setCrossSubdomainCookie(ADMIN_COOKIE_NAME, "true");
     } else {
       localStorage.removeItem("candlesticks_admin_authenticated");
+      clearCrossSubdomainCookie(ADMIN_COOKIE_NAME);
     }
     window.dispatchEvent(new Event("candlesticks_user_updated"));
   } catch {
     // ignore
   }
+}
+
+export function buildRolePortalUrl(role: "student" | "admin", targetPath?: string): string {
+  const targetDomain = role === "admin" ? ADMIN_PORTAL_DOMAIN : STUDENT_PORTAL_DOMAIN;
+  const defaultPath = role === "admin" ? "/admin" : "/dashboard";
+  const cleanPath = (targetPath || defaultPath).startsWith("/")
+    ? targetPath || defaultPath
+    : `/${targetPath || defaultPath}`;
+
+  const payload =
+    role === "admin"
+      ? { role: "admin" as const, ts: Date.now() }
+      : { role: "student" as const, student: getStoredCurrentUser(), ts: Date.now() };
+  const ssoToken = encodeBase64Utf8(JSON.stringify(payload));
+  const sep = cleanPath.includes("?") ? "&" : "?";
+  return `https://${targetDomain}${cleanPath}${ssoToken ? `${sep}ca_sso=${encodeURIComponent(ssoToken)}` : ""}`;
+}
+
+export function redirectToRolePortal(
+  role: "student" | "admin",
+  targetPath?: string,
+  fallbackNavigate?: (path: string) => void
+): void {
+  const defaultPath = role === "admin" ? "/admin" : "/dashboard";
+  const cleanPath = (targetPath || defaultPath).startsWith("/")
+    ? targetPath || defaultPath
+    : `/${targetPath || defaultPath}`;
+
+  if (typeof window === "undefined") {
+    fallbackNavigate?.(cleanPath);
+    return;
+  }
+
+  const currentHost = window.location.hostname.toLowerCase();
+  const targetDomain = role === "admin" ? ADMIN_PORTAL_DOMAIN : STUDENT_PORTAL_DOMAIN;
+
+  // If already on the exact target domain (stu.candlesticksacademy.online or master.candlesticksacademy.online), navigate directly in-app
+  if (currentHost === targetDomain) {
+    if (fallbackNavigate) {
+      fallbackNavigate(cleanPath);
+    } else {
+      window.location.assign(cleanPath);
+    }
+    return;
+  }
+
+  // Direct student to stu.candlesticksacademy.online and admin to master.candlesticksacademy.online
+  const destinationUrl = buildRolePortalUrl(role, cleanPath);
+  window.location.assign(destinationUrl);
 }
 
 export async function checkUsernameAvailability(
@@ -1330,6 +1534,8 @@ export function logoutCurrentUser() {
   try {
     localStorage.removeItem("candlesticks_current_student");
     localStorage.removeItem("candlesticks_admin_authenticated");
+    clearCrossSubdomainCookie(STUDENT_COOKIE_NAME);
+    clearCrossSubdomainCookie(ADMIN_COOKIE_NAME);
     if (isSupabaseConfigured && supabase) {
       void supabase.auth.signOut();
     }
