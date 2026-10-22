@@ -9024,6 +9024,75 @@ export function PaymentsPage() {
             </div>
           </Card>
 
+          {/* Google Search Snippet Fix & Instant Re-Index Assistant */}
+          <Card className="data-card border-[#ffb600]/40">
+            <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#ffb600]/[0.04]">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                  GOOGLE SEARCH SNIPPET &amp; CRAWL DIAGNOSTIC
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Fix &ldquo;We would like to show you a description here but the site won&apos;t allow us&rdquo;
+                </h3>
+              </div>
+              <Badge tone="yellow">ACTION REQUIRED IN SEARCH CONSOLE</Badge>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2">
+                <p className="font-bold flex items-center gap-2 text-white">
+                  <AlertCircle size={15} className="text-[#ffb600]" />
+                  Why Google Shows This Message Right Now:
+                </p>
+                <p className="text-[#cfd7e4] leading-relaxed">
+                  Google displays this message when it indexed your domain (<code>www.candlesticksacademy.online</code>) from external web links, but Googlebot previously encountered a restrictive <code>robots.txt</code> or cached an early deployment state where the crawler wasn&apos;t permitted to read the page title and meta description.
+                </p>
+                <p className="text-[#cfd7e4] leading-relaxed">
+                  <strong>The Good News:</strong> We have now completely opened and optimized <code>robots.txt</code>, added explicit HTML <code>&lt;title&gt;</code>, meta descriptions, Ghana/Africa geo-tags, and Schema.org rich data. You just need to trigger Googlebot to recrawl your site now!
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
+                  Follow These 3 Steps to Recrawl and Rank #1:
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3.5 rounded-xl bg-[#11141d] border border-white/10 space-y-1.5">
+                    <span className="text-[#ffb600] font-mono font-bold">STEP 1</span>
+                    <b className="block text-white">Open Search Console</b>
+                    <p className="text-[#8c95a6] text-[11px]">
+                      Sign in to Google Search Console with your Google account (<code>mike.vinci77@gmail.com</code>).
+                    </p>
+                    <a
+                      href="https://search.google.com/search-console"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[#ffb600] font-bold text-[11px] hover:underline pt-1"
+                    >
+                      Open Google Search Console <ExternalLink size={10} />
+                    </a>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-[#11141d] border border-white/10 space-y-1.5">
+                    <span className="text-[#ffb600] font-mono font-bold">STEP 2</span>
+                    <b className="block text-white">Inspect Both URLs</b>
+                    <p className="text-[#8c95a6] text-[11px]">
+                      Paste <code className="text-[#ffb600]">https://candlesticksacademy.online/</code> into the top URL Inspection bar, then test <code className="text-[#ffb600]">https://www.candlesticksacademy.online/</code>.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-[#11141d] border border-white/10 space-y-1.5">
+                    <span className="text-[#ffb600] font-mono font-bold">STEP 3</span>
+                    <b className="block text-white">Click &ldquo;Request Indexing&rdquo;</b>
+                    <p className="text-[#8c95a6] text-[11px]">
+                      Click <strong>&ldquo;Test Live URL&rdquo;</strong> &rarr; <strong>&ldquo;Request Indexing&rdquo;</strong>. Googlebot will immediately crawl the updated title, description, and rich snippet!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
           {/* Subdomain Routing & Architecture Card */}
           <Card className="data-card">
             <div className="p-5 border-b border-white/10">

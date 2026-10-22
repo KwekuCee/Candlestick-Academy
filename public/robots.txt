@@ -1,12 +1,16 @@
-# robots.txt for Candlesticks Academy (https://candlesticksacademy.online)
+# robots.txt for Candlesticks Academy (https://candlesticksacademy.online and https://www.candlesticksacademy.online)
 User-agent: *
 Allow: /
 Allow: /courses
+Allow: /sessions
+Allow: /signals
+Allow: /mentorship
 Allow: /terms
 Allow: /privacy
 Allow: /login
 Allow: /register
 Allow: /onboarding
+Allow: /sitemap.xml
 Allow: /llms.txt
 Allow: /llms-full.txt
 Disallow: /admin
@@ -15,9 +19,14 @@ Disallow: /settings
 Disallow: /quiz/
 Disallow: /progress
 
-# AI Crawlers and Search Engines (ChatGPT, Perplexity, Claude, Google Gemini)
+# Search Engine Web Crawlers (Googlebot, Bingbot, Applebot)
 User-agent: Googlebot
 Allow: /
+Allow: /*
+
+User-agent: Googlebot-Image
+Allow: /
+Allow: /*
 
 User-agent: Google-Extended
 Allow: /

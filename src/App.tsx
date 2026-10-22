@@ -1073,9 +1073,9 @@ export default function App() {
         <section className="hero">
           <div className="container hero-grid">
             <div className="hero-copy">
-              <div className="status-pill"><i /> ENROLLMENT OPEN <span>FREE THIS MONTH</span></div>
+              <div className="status-pill"><i /> #1 FOREX ACADEMY IN AFRICA <span>ACCRA, GHANA · 1-MONTH FREE</span></div>
               <h1>Trade with skill.<br />Live with <em>freedom.</em></h1>
-              <p className="hero-sub">Learn forex from the ground up with structured lessons, live daily analysis, and personal mentorship. No signals-only nonsense.</p>
+              <p className="hero-sub">The premier institutional Forex academy and trading company in Ghana and across Africa, led by Pastor Mike. Master price action, join live London &amp; NY trading rooms, and execute high-probability institutional setups.</p>
               <div className="hero-actions">
                 <button className="button primary large rounded-pill" onClick={openRegister}>Start free this month <Icon name="arrow" /></button>
                 <a className="watch-link" href="#learn"><span><Icon name="play" size={16} /></span> See how it works</a>
@@ -1084,7 +1084,7 @@ export default function App() {
                 <div className="avatars" aria-hidden="true">
                   <span>KM</span><span>AA</span><span>EO</span><span>+</span>
                 </div>
-                <div><b>Join 1,200+ students</b><span><i>★★★★★</i> 4.9 student rating across West Africa</span></div>
+                <div><b>Join 1,200+ traders across Ghana &amp; Africa</b><span><i>★★★★★</i> 4.9 Rating · #1 Rated Trading Company in Ghana</span></div>
               </div>
             </div>
             <MarketCard />
@@ -1148,16 +1148,16 @@ export default function App() {
               <div className="experience-badge"><b>8+</b><span>YEARS IN<br />THE MARKET</span></div>
             </div>
             <div className="mentor-copy">
-              <p className="eyebrow">MEET YOUR MENTOR</p>
+              <p className="eyebrow">HEAD OF TRADING · ACCRA, GHANA</p>
               <h2>Built by a trader,<br />not a textbook.</h2>
-              <blockquote>“I built Candlesticks Academy to give you the guidance I wish I had when I started.”</blockquote>
-              <p>No shortcuts. No unrealistic promises. Just the skills, habits, and market experience you need to become a disciplined trader.</p>
+              <blockquote>“I built Candlesticks Academy to bring institutional trading education to Ghana and all of Africa — with honest mentorship, live execution, and capital preservation.”</blockquote>
+              <p>No shortcuts. No unrealistic promises. Just the skills, habits, and market experience you need to become a disciplined trader in Ghana, Nigeria, and worldwide.</p>
               <ul>
-                <li><Icon name="check" size={16} /> Active market practitioner</li>
-                <li><Icon name="check" size={16} /> Ghana-based, globally minded</li>
-                <li><Icon name="check" size={16} /> Focused on responsible trading</li>
+                <li><Icon name="check" size={16} /> Lead Mentor at Ghana&apos;s Premier Trading Company &amp; Academy</li>
+                <li><Icon name="check" size={16} /> Official Exness Broker Partner across Africa (Code: 9s8109d94y)</li>
+                <li><Icon name="check" size={16} /> Daily live London &amp; New York session trading execution</li>
               </ul>
-              <span className="signature">Michael Kweku Essilfie <small>FOUNDER, CANDLESTICKS ACADEMY</small></span>
+              <span className="signature">Pastor Mike (Michael Kweku Essilfie) <small>FOUNDER &amp; HEAD TRADER, CANDLESTICKS ACADEMY GHANA</small></span>
             </div>
           </div>
         </section>
@@ -1178,6 +1178,48 @@ export default function App() {
                   <span className="quote-mark">“</span><p>{t[0]}</p>
                   <div><span className="student-avatar">{t[3]}</span><b>{t[1]}<small>{t[2]} · VERIFIED STUDENT</small></b></div>
                 </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* SEO FAQ Section targeting Ghana and Africa Trading Searches */}
+        <section id="faq" className="section faq-section">
+          <div className="container">
+            <div className="section-heading centered">
+              <p className="eyebrow">FREQUENTLY ASKED QUESTIONS</p>
+              <h2>The Premier Forex Academy &amp; Trading Company in Ghana</h2>
+              <p>Everything you need to know about institutional Forex and Gold trading with Pastor Mike across Africa.</p>
+            </div>
+
+            <div className="max-w-3xl mx-auto space-y-4 pt-4">
+              {[
+                {
+                  q: "What makes Candlesticks Academy the #1 Forex academy in Africa and Ghana?",
+                  a: "Candlesticks Academy combines institutional price action education, daily live trading rooms during the London and New York sessions, certified progression exams, and verified multi-target signals. Unlike signal channels, Pastor Mike teaches you order flow, liquidity dynamics, and capital preservation.",
+                },
+                {
+                  q: "Which trading companies in Ghana offer institutional mentorship and Exness benefits?",
+                  a: "Candlesticks Academy is Ghana's leading Forex education and trading company, providing direct 1-on-1 mentorship, automated Exness broker copy trading, and an exclusive 1-month free trial for funded partner accounts (Partner Code: 9s8109d94y).",
+                },
+                {
+                  q: "Can I join from outside Ghana (Nigeria, South Africa, Kenya, UK)?",
+                  a: "Yes. Our academy has over 1,200 active students spanning Ghana (Accra, Kumasi, Takoradi), Nigeria (Lagos, Abuja), Kenya, South Africa, and international trading hubs. All sessions are streamed live online with full HD replays.",
+                },
+                {
+                  q: "How do I claim the 1-Month Free Trial?",
+                  a: "Create your free student account on candlesticksacademy.online, register with Exness using our official partner link, and deposit a minimum of $50 into your own trading account. Full access to courses, live sessions, and VIP signals is automatically unlocked.",
+                },
+              ].map((faq, idx) => (
+                <div key={idx} className="p-5 rounded-2xl bg-[#131722] border border-white/10 hover:border-[#ffb600]/40 transition text-left">
+                  <h3 className="text-sm sm:text-base font-bold text-white mb-2 flex items-start gap-2.5">
+                    <span className="text-[#ffb600] font-mono text-xs sm:text-sm shrink-0 mt-0.5">0{idx + 1}.</span>
+                    <span>{faq.q}</span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#9aa4b5] leading-relaxed pl-6 sm:pl-7">
+                    {faq.a}
+                  </p>
+                </div>
               ))}
             </div>
           </div>

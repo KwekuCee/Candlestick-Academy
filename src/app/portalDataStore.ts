@@ -4937,10 +4937,10 @@ export const DEFAULT_SEO_ANALYTICS_CONFIG: SeoAnalyticsConfig = {
   gaMeasurementId: "G-7R5Y1KZBEP",
   googleSearchConsoleVerification: "google-site-verification=CandlesticksAcademy-Verification-Token-2026",
   gscVerificationTag: "google-site-verification=CandlesticksAcademy-Verification-Token-2026",
-  siteTitle: "Candlesticks Academy | Institutional Forex Mentorship & Signals",
+  siteTitle: "Candlesticks Academy | Top Forex Academy & Trading Company in Ghana & Africa",
   metaDescription:
-    "Official institutional Forex academy led by Pastor Mike. Master order flow, liquidity, London & NY sessions, and receive real-time institutional signals with Exness broker integration.",
-  keywords: "Forex academy, Candlesticks Academy, Pastor Mike, Exness broker, Gold trading signals, XAUUSD, institutional order flow, smart money concepts, forex mentorship Ghana Africa",
+    "Candlesticks Academy is the #1 premier institutional Forex academy and trading company in Ghana and across Africa, founded by Pastor Mike. Master price action, join live London/NY trading rooms, and get VIP signals with Exness broker benefits.",
+  keywords: "Trading companies in Ghana, Forex academy in africa, Forex academy in Ghana, Best forex trading academy in Ghana, Forex mentorship Ghana, Trading company Accra Ghana, Candlesticks Academy, Pastor Mike, Forex trading school Ghana, Institutional price action Africa, Gold trading signals Ghana, Exness partner Ghana Africa, West Africa Forex trading, Michael Kweku Essilfie",
   enableGa: true,
   enableAiSearchIndexing: true,
   enableAiSearchCrawlers: true,
