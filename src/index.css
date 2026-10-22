@@ -256,6 +256,76 @@
     0 0 55px rgba(255, 182, 0, 0.16);
 }
 
+.market-pair-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  flex-wrap: wrap;
+}
+.pair-switch-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.pair-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a4abb5;
+  font: 600 12.5px "DM Mono", monospace;
+  padding: 7px 13px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pair-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+.pair-tab-btn.active {
+  background: linear-gradient(135deg, rgba(255, 182, 0, 0.24), rgba(255, 182, 0, 0.1));
+  border-color: rgba(255, 182, 0, 0.48);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(255, 182, 0, 0.15);
+}
+.pair-tab-sym {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--yellow);
+  font-size: 11px;
+  font-weight: 700;
+}
+.pair-tab-btn.active .pair-tab-sym {
+  background: var(--yellow);
+  color: var(--ink);
+}
+.live-source-tag {
+  font: 500 11px "DM Mono", monospace;
+  color: #8f98a6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-source-tag b {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
 .market-head {
   display: flex;
   justify-content: space-between;
@@ -280,13 +350,14 @@
   font-weight: 700;
   display: grid;
   place-items: center;
-  font-size: 26px;
+  font-size: 24px;
   flex-shrink: 0;
 }
 .pair-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 .pair-title-row b {
   font-size: 22px;
@@ -409,12 +480,19 @@
   color: var(--green);
   font: 600 13px "DM Mono", monospace; /* semi-bold */
 }
+.price-delta.neg {
+  color: #f6465d;
+}
 .pip-delta {
   color: #0ecb81;
   font: 500 12px "DM Mono", monospace; /* medium */
   background: rgba(14, 203, 129, 0.12);
   padding: 2px 6px;
   border-radius: 4px;
+}
+.pip-delta.neg {
+  color: #f6465d;
+  background: rgba(246, 70, 93, 0.14);
 }
 
 .chart-zoom-bar {

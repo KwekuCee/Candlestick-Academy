@@ -57,168 +57,509 @@ function Logo() {
   return <BrandLogo href="#top" size="md" />;
 }
 
+type HeroPairId = "EUR/USD" | "GBP/USD" | "XAU/USD";
+type HeroTimeframe = "1m" | "5m" | "15m";
+
 interface Candle {
   id: number;
+  timestamp: number;
   time: string;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+  ema9: number;
 }
 
-// 26 zoomed-out 1-minute historical candles for EUR/USD
-const initialCandlesData: Candle[] = [
-  { id: 1, time: "11:35", open: 1.08310, high: 1.08375, low: 1.08290, close: 1.08360, volume: 84 },
-  { id: 2, time: "11:36", open: 1.08360, high: 1.08410, low: 1.08330, close: 1.08390, volume: 92 },
-  { id: 3, time: "11:37", open: 1.08390, high: 1.08430, low: 1.08350, close: 1.08370, volume: 76 },
-  { id: 4, time: "11:38", open: 1.08370, high: 1.08460, low: 1.08360, close: 1.08440, volume: 110 },
-  { id: 5, time: "11:39", open: 1.08440, high: 1.08500, low: 1.08410, close: 1.08480, volume: 125 },
-  { id: 6, time: "11:40", open: 1.08480, high: 1.08510, low: 1.08430, close: 1.08450, volume: 88 },
-  { id: 7, time: "11:41", open: 1.08450, high: 1.08490, low: 1.08400, close: 1.08420, volume: 95 },
-  { id: 8, time: "11:42", open: 1.08420, high: 1.08510, low: 1.08410, close: 1.08490, volume: 118 },
-  { id: 9, time: "11:43", open: 1.08490, high: 1.08560, low: 1.08470, close: 1.08540, volume: 140 },
-  { id: 10, time: "11:44", open: 1.08540, high: 1.08580, low: 1.08490, close: 1.08510, volume: 102 },
-  { id: 11, time: "11:45", open: 1.08510, high: 1.08550, low: 1.08460, close: 1.08480, volume: 89 },
-  { id: 12, time: "11:46", open: 1.08480, high: 1.08570, low: 1.08450, close: 1.08550, volume: 132 },
-  { id: 13, time: "11:47", open: 1.08550, high: 1.08610, low: 1.08530, close: 1.08590, volume: 148 },
-  { id: 14, time: "11:48", open: 1.08590, high: 1.08640, low: 1.08540, close: 1.08570, volume: 115 },
-  { id: 15, time: "11:49", open: 1.08570, high: 1.08600, low: 1.08510, close: 1.08530, volume: 96 },
-  { id: 16, time: "11:50", open: 1.08530, high: 1.08580, low: 1.08500, close: 1.08550, volume: 108 },
-  { id: 17, time: "11:51", open: 1.08550, high: 1.08630, low: 1.08530, close: 1.08610, volume: 135 },
-  { id: 18, time: "11:52", open: 1.08610, high: 1.08670, low: 1.08580, close: 1.08650, volume: 162 },
-  { id: 19, time: "11:53", open: 1.08650, high: 1.08690, low: 1.08600, close: 1.08620, volume: 118 },
-  { id: 20, time: "11:54", open: 1.08620, high: 1.08650, low: 1.08560, close: 1.08580, volume: 94 },
-  { id: 21, time: "11:55", open: 1.08580, high: 1.08640, low: 1.08550, close: 1.08620, volume: 124 },
-  { id: 22, time: "11:56", open: 1.08620, high: 1.08680, low: 1.08600, close: 1.08660, volume: 146 },
-  { id: 23, time: "11:57", open: 1.08660, high: 1.08720, low: 1.08630, close: 1.08690, volume: 175 },
-  { id: 24, time: "11:58", open: 1.08690, high: 1.08740, low: 1.08650, close: 1.08670, volume: 130 },
-  { id: 25, time: "11:59", open: 1.08670, high: 1.08710, low: 1.08620, close: 1.08640, volume: 98 },
-  { id: 26, time: "12:00", open: 1.08640, high: 1.08700, low: 1.08630, close: 1.08680, volume: 85 },
-];
+interface PairConfig {
+  id: HeroPairId;
+  shortLabel: string;
+  buttonLabel: string;
+  fullName: string;
+  icon: string;
+  decimals: number;
+  gridDecimals: number;
+  pipMultiplier: number;
+  krakenPair: string;
+  wsPair: string;
+}
+
+const HERO_PAIRS: Record<HeroPairId, PairConfig> = {
+  "EUR/USD": {
+    id: "EUR/USD",
+    shortLabel: "EUR / USD",
+    buttonLabel: "EUR / USD",
+    fullName: "Euro / U.S. Dollar",
+    icon: "€",
+    decimals: 5,
+    gridDecimals: 4,
+    pipMultiplier: 10000,
+    krakenPair: "EURUSD",
+    wsPair: "EUR/USD",
+  },
+  "GBP/USD": {
+    id: "GBP/USD",
+    shortLabel: "GBP / USD",
+    buttonLabel: "GBP / USD",
+    fullName: "British Pound / U.S. Dollar",
+    icon: "£",
+    decimals: 5,
+    gridDecimals: 4,
+    pipMultiplier: 10000,
+    krakenPair: "GBPUSD",
+    wsPair: "GBP/USD",
+  },
+  "XAU/USD": {
+    id: "XAU/USD",
+    shortLabel: "XAU / USD",
+    buttonLabel: "Gold (XAU / USD)",
+    fullName: "Gold Spot / U.S. Dollar",
+    icon: "Au",
+    decimals: 2,
+    gridDecimals: 2,
+    pipMultiplier: 10,
+    krakenPair: "PAXGUSD",
+    wsPair: "PAXG/USD",
+  },
+};
+
+const TIMEFRAME_META: Record<HeroTimeframe, { label: string; seconds: number; krakenInterval: number }> = {
+  "1m": { label: "1-Minute", seconds: 60, krakenInterval: 1 },
+  "5m": { label: "5-Minute", seconds: 300, krakenInterval: 5 },
+  "15m": { label: "15-Minute", seconds: 900, krakenInterval: 15 },
+};
+
+function computeRealEma9Series(closes: number[]): number[] {
+  if (closes.length === 0) return [];
+  const k = 2 / (9 + 1);
+  const out: number[] = [];
+  let prev = closes[0];
+  for (let i = 0; i < closes.length; i++) {
+    prev = i === 0 ? closes[0] : closes[i] * k + prev * (1 - k);
+    out.push(prev);
+  }
+  return out;
+}
+
+function formatUnixTime(unixSec: number): string {
+  const d = new Date(unixSec * 1000);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatCountdown(secondsLeft: number, tf: HeroTimeframe): string {
+  if (tf === "1m") return `${secondsLeft}s`;
+  const m = Math.floor(secondsLeft / 60);
+  const s = secondsLeft % 60;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+function getSecondsToNextCandle(tf: HeroTimeframe): number {
+  const intervalSec = TIMEFRAME_META[tf].seconds;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const rem = intervalSec - (nowSec % intervalSec);
+  return rem > 0 ? rem : intervalSec;
+}
+
+async function fetchDirectKrakenMarketData(
+  pairCfg: PairConfig,
+  tf: HeroTimeframe
+): Promise<{
+  candles: Candle[];
+  currentPrice: number;
+  spreadPips: number;
+  high24h: number;
+  low24h: number;
+  open24h: number;
+  changePct: number;
+  changePips: number;
+  volume24h: number;
+} | null> {
+  try {
+    const tfInfo = TIMEFRAME_META[tf];
+    const [ohlcResp, tickerResp] = await Promise.all([
+      fetch(`https://api.kraken.com/0/public/OHLC?pair=${pairCfg.krakenPair}&interval=${tfInfo.krakenInterval}`),
+      fetch(`https://api.kraken.com/0/public/Ticker?pair=${pairCfg.krakenPair}`),
+    ]);
+    if (!ohlcResp.ok) return null;
+    const ohlcJson = await ohlcResp.json();
+    const tickerJson = tickerResp.ok ? await tickerResp.json() : null;
+
+    const resultObj = ohlcJson?.result || {};
+    const pairKey = Object.keys(resultObj).find((k) => k !== "last");
+    const rows: any[] = pairKey ? resultObj[pairKey] : [];
+    if (!Array.isArray(rows) || rows.length < 5) return null;
+
+    const parsed = rows
+      .map((r: any[]) => ({
+        timestamp: Number(r[0]),
+        open: Number(r[1]),
+        high: Number(r[2]),
+        low: Number(r[3]),
+        close: Number(r[4]),
+        volume: Math.max(1, Number(r[6]) || Number(r[7]) || 10),
+      }))
+      .filter((c) => Number.isFinite(c.close) && c.close > 0);
+
+    const ema9All = computeRealEma9Series(parsed.map((c) => c.close));
+    const visibleCount = 28;
+    const startIdx = Math.max(0, parsed.length - visibleCount);
+    const candles: Candle[] = parsed.slice(startIdx).map((c, idx) => ({
+      id: c.timestamp,
+      timestamp: c.timestamp,
+      time: formatUnixTime(c.timestamp),
+      open: Number(c.open.toFixed(pairCfg.decimals)),
+      high: Number(c.high.toFixed(pairCfg.decimals)),
+      low: Number(c.low.toFixed(pairCfg.decimals)),
+      close: Number(c.close.toFixed(pairCfg.decimals)),
+      volume: Math.round(c.volume * 100) / 100,
+      ema9: Number((ema9All[startIdx + idx] ?? c.close).toFixed(pairCfg.decimals)),
+    }));
+
+    let currentPrice = candles[candles.length - 1]?.close || 0;
+    let spreadPips = pairCfg.id === "XAU/USD" ? 1.2 : 0.2;
+    let high24h = Math.max(...parsed.slice(-96).map((c) => c.high));
+    let low24h = Math.min(...parsed.slice(-96).map((c) => c.low));
+    let open24h = parsed[Math.max(0, parsed.length - 96)]?.open || currentPrice;
+    let volume24h = parsed.slice(-96).reduce((acc, c) => acc + c.volume, 0);
+
+    if (tickerJson?.result) {
+      const tKey = Object.keys(tickerJson.result)[0];
+      const tInfo = tKey ? tickerJson.result[tKey] : null;
+      if (tInfo) {
+        const bid = Number(tInfo.b?.[0] || 0);
+        const ask = Number(tInfo.a?.[0] || 0);
+        const last = Number(tInfo.c?.[0] || 0);
+        if (bid > 0 && ask > 0) {
+          currentPrice = Number(((bid + ask) / 2).toFixed(pairCfg.decimals));
+          spreadPips = Number(Math.max(0.1, (ask - bid) * pairCfg.pipMultiplier).toFixed(1));
+        } else if (last > 0) {
+          currentPrice = Number(last.toFixed(pairCfg.decimals));
+        }
+        if (tInfo.h?.[1]) high24h = Number(Number(tInfo.h[1]).toFixed(pairCfg.decimals));
+        if (tInfo.l?.[1]) low24h = Number(Number(tInfo.l[1]).toFixed(pairCfg.decimals));
+        if (tInfo.o) open24h = Number(Number(tInfo.o).toFixed(pairCfg.decimals));
+        if (tInfo.v?.[1]) volume24h = Math.round(Number(tInfo.v[1]));
+      }
+    }
+
+    const diff = currentPrice - open24h;
+    const changePct = open24h > 0 ? Number(((diff / open24h) * 100).toFixed(2)) : 0;
+    const changePips = Number((diff * pairCfg.pipMultiplier).toFixed(1));
+
+    return {
+      candles,
+      currentPrice,
+      spreadPips,
+      high24h: Number(Math.max(high24h, currentPrice).toFixed(pairCfg.decimals)),
+      low24h: Number(Math.min(low24h, currentPrice).toFixed(pairCfg.decimals)),
+      open24h,
+      changePct,
+      changePips,
+      volume24h,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function MarketCard() {
-  const [candlesList, setCandlesList] = useState<Candle[]>(initialCandlesData);
-  const [currentPrice, setCurrentPrice] = useState<number>(1.08682);
+  const [selectedPair, setSelectedPair] = useState<HeroPairId>("EUR/USD");
+  const [timeframe, setTimeframe] = useState<HeroTimeframe>("1m");
+  const [candlesList, setCandlesList] = useState<Candle[]>([]);
+  const [currentPrice, setCurrentPrice] = useState<number>(1.12348);
   const [tickDirection, setTickDirection] = useState<"up" | "down" | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState<number>(38);
-  const [timeframe, setTimeframe] = useState<string>("1m");
+  const [secondsLeft, setSecondsLeft] = useState<number>(() => getSecondsToNextCandle("1m"));
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
   const [showIndicators, setShowIndicators] = useState<boolean>(true);
-  const nextCandleId = useRef<number>(100);
+  const [loadingChart, setLoadingChart] = useState<boolean>(true);
+  const [marketStats, setMarketStats] = useState<{
+    spreadPips: number;
+    high24h: number;
+    low24h: number;
+    open24h: number;
+    changePct: number;
+    changePips: number;
+    volume24h: number;
+  }>({
+    spreadPips: 0.2,
+    high24h: 1.12449,
+    low24h: 1.12148,
+    open24h: 1.12353,
+    changePct: 0.08,
+    changePips: 9.2,
+    volume24h: 30810,
+  });
 
-  // Live 1-minute real-time EUR/USD tick generator
-  useEffect(() => {
-    let tickTimeout: ReturnType<typeof setTimeout>;
+  const pairConfig = HERO_PAIRS[selectedPair];
+  const tfMeta = TIMEFRAME_META[timeframe];
+  const prevPriceRef = useRef<number>(currentPrice);
 
-    const tickInterval = setInterval(() => {
-      // Sub-pip realistic EUR/USD ticks (e.g. ±0.00004 to ±0.00010)
-      const pipShift = (Math.random() - 0.47) * 0.00008;
+  // Helper to apply incoming live price tick to active candle and EMA(9)
+  const applyLiveTick = (liveVal: number, addVol = 0) => {
+    const rounded = Number(liveVal.toFixed(pairConfig.decimals));
+    if (!Number.isFinite(rounded) || rounded <= 0) return;
 
-      setCurrentPrice((prev) => {
-        const nextPrice = Number((prev + pipShift).toFixed(5));
-        const dir = nextPrice >= prev ? "up" : "down";
-        setTickDirection(dir);
-        return nextPrice;
-      });
+    const prev = prevPriceRef.current;
+    if (prev > 0 && rounded !== prev) {
+      setTickDirection(rounded > prev ? "up" : "down");
+    }
+    prevPriceRef.current = rounded;
+    setCurrentPrice(rounded);
 
-      // Dynamically update the current active 1-minute candle
-      setCandlesList((prevList) => {
-        if (prevList.length === 0) return prevList;
-        const lastIdx = prevList.length - 1;
-        const active = prevList[lastIdx];
-        const nextPrice = Number((active.close + pipShift).toFixed(5));
-        const updatedActive: Candle = {
-          ...active,
-          close: nextPrice,
-          high: Math.max(active.high, nextPrice),
-          low: Math.min(active.low, nextPrice),
-          volume: active.volume + Math.floor(Math.random() * 4 + 1),
+    setCandlesList((prevList) => {
+      if (prevList.length === 0) return prevList;
+      const intervalSec = tfMeta.seconds;
+      const nowBucket = Math.floor(Date.now() / 1000 / intervalSec) * intervalSec;
+      const lastIdx = prevList.length - 1;
+      const last = prevList[lastIdx];
+      const prevEma = prevList.length > 1 ? prevList[lastIdx - 1].ema9 : last.ema9;
+      const k = 2 / (9 + 1);
+      const nextEma9 = Number((rounded * k + prevEma * (1 - k)).toFixed(pairConfig.decimals));
+
+      if (nowBucket > last.timestamp) {
+        const newCandle: Candle = {
+          id: nowBucket,
+          timestamp: nowBucket,
+          time: formatUnixTime(nowBucket),
+          open: last.close,
+          high: Math.max(last.close, rounded),
+          low: Math.min(last.close, rounded),
+          close: rounded,
+          volume: Math.max(1, Math.round(addVol * 100) / 100),
+          ema9: nextEma9,
         };
-        return [...prevList.slice(0, lastIdx), updatedActive];
-      });
+        const nextList = [...prevList, newCandle];
+        return nextList.length > 28 ? nextList.slice(nextList.length - 28) : nextList;
+      }
 
-      // Clear tick flash after 350ms
-      tickTimeout = setTimeout(() => setTickDirection(null), 350);
-    }, 950);
+      const updatedActive: Candle = {
+        ...last,
+        close: rounded,
+        high: Number(Math.max(last.high, rounded).toFixed(pairConfig.decimals)),
+        low: Number(Math.min(last.low, rounded).toFixed(pairConfig.decimals)),
+        volume: Math.round((last.volume + addVol) * 100) / 100,
+        ema9: nextEma9,
+      };
+      return [...prevList.slice(0, lastIdx), updatedActive];
+    });
+
+    setMarketStats((prevStats) => {
+      const open24h = prevStats.open24h || rounded;
+      const diff = rounded - open24h;
+      return {
+        ...prevStats,
+        high24h: Number(Math.max(prevStats.high24h, rounded).toFixed(pairConfig.decimals)),
+        low24h: Number(Math.min(prevStats.low24h || rounded, rounded).toFixed(pairConfig.decimals)),
+        changePct: open24h > 0 ? Number(((diff / open24h) * 100).toFixed(2)) : 0,
+        changePips: Number((diff * pairConfig.pipMultiplier).toFixed(1)),
+      };
+    });
+  };
+
+  // Clear tick flash cleanly
+  useEffect(() => {
+    if (!tickDirection) return;
+    const t = setTimeout(() => setTickDirection(null), 400);
+    return () => clearTimeout(t);
+  }, [tickDirection]);
+
+  // Fetch real OHLCV candles + live market stats on pair or timeframe change and poll every 4.5s
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingChart(true);
+    setHoveredCandle(null);
+    setSecondsLeft(getSecondsToNextCandle(timeframe));
+
+    async function loadRealMarketCandles(isInitial = false) {
+      try {
+        const res = await fetch(
+          `/api/market/candles?symbol=${encodeURIComponent(selectedPair)}&interval=${timeframe}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && Array.isArray(data?.candles) && data.candles.length > 0) {
+            setCandlesList(data.candles);
+            const nextPrice = Number(data.currentPrice);
+            if (!isInitial && prevPriceRef.current > 0 && nextPrice !== prevPriceRef.current) {
+              setTickDirection(nextPrice > prevPriceRef.current ? "up" : "down");
+            }
+            prevPriceRef.current = nextPrice;
+            setCurrentPrice(nextPrice);
+            setMarketStats({
+              spreadPips: Number(data.spreadPips || (selectedPair === "XAU/USD" ? 1.2 : 0.2)),
+              high24h: Number(data.high24h || nextPrice),
+              low24h: Number(data.low24h || nextPrice),
+              open24h: Number(data.open24h || nextPrice),
+              changePct: Number(data.changePct || 0),
+              changePips: Number(data.changePips || 0),
+              volume24h: Number(data.volume24h || 1000),
+            });
+            setLoadingChart(false);
+            return;
+          }
+        }
+      } catch {
+        // Fallback to direct Kraken CORS API below
+      }
+
+      const fallback = await fetchDirectKrakenMarketData(HERO_PAIRS[selectedPair], timeframe);
+      if (!cancelled && fallback && fallback.candles.length > 0) {
+        setCandlesList(fallback.candles);
+        const nextPrice = fallback.currentPrice;
+        if (!isInitial && prevPriceRef.current > 0 && nextPrice !== prevPriceRef.current) {
+          setTickDirection(nextPrice > prevPriceRef.current ? "up" : "down");
+        }
+        prevPriceRef.current = nextPrice;
+        setCurrentPrice(nextPrice);
+        setMarketStats({
+          spreadPips: fallback.spreadPips,
+          high24h: fallback.high24h,
+          low24h: fallback.low24h,
+          open24h: fallback.open24h,
+          changePct: fallback.changePct,
+          changePips: fallback.changePips,
+          volume24h: fallback.volume24h,
+        });
+        setLoadingChart(false);
+      }
+    }
+
+    void loadRealMarketCandles(true);
+    const pollInterval = setInterval(() => {
+      void loadRealMarketCandles(false);
+    }, 4500);
 
     return () => {
-      clearInterval(tickInterval);
-      clearTimeout(tickTimeout);
+      cancelled = true;
+      clearInterval(pollInterval);
     };
-  }, []);
+  }, [selectedPair, timeframe]);
 
-  // 1-minute candle countdown clock
+  // Real-time WebSocket stream from Kraken for instantaneous market ticks and spread updates
   useEffect(() => {
-    const countdownInterval = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          return 60;
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket("wss://ws.kraken.com");
+      const wsPairName = HERO_PAIRS[selectedPair].wsPair;
+      ws.onopen = () => {
+        ws?.send(
+          JSON.stringify({
+            event: "subscribe",
+            pair: [wsPairName],
+            subscription: { name: "spread" },
+          })
+        );
+        ws?.send(
+          JSON.stringify({
+            event: "subscribe",
+            pair: [wsPairName],
+            subscription: { name: "trade" },
+          })
+        );
+      };
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (!Array.isArray(msg)) return;
+          const channelName = msg[2];
+          const payload = msg[1];
+          if (channelName === "spread" && Array.isArray(payload)) {
+            const bid = Number(payload[0]);
+            const ask = Number(payload[1]);
+            if (bid > 0 && ask > 0) {
+              const mid = (bid + ask) / 2;
+              applyLiveTick(mid, 0);
+              const cfg = HERO_PAIRS[selectedPair];
+              const sp = Number(Math.max(0.1, (ask - bid) * cfg.pipMultiplier).toFixed(1));
+              setMarketStats((prev) => ({ ...prev, spreadPips: sp }));
+            }
+          } else if (channelName === "trade" && Array.isArray(payload) && payload.length > 0) {
+            const lastTrade = payload[payload.length - 1];
+            const tradePrice = Number(lastTrade?.[0]);
+            const tradeVol = Number(lastTrade?.[1] || 0);
+            if (tradePrice > 0) {
+              applyLiveTick(tradePrice, tradeVol);
+            }
+          }
+        } catch {
+          // ignore parse errors
         }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(countdownInterval);
-  }, []);
-
-  // When countdown resets to 60, append a new 1-minute candle cleanly
-  useEffect(() => {
-    if (secondsLeft === 60) {
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-      nextCandleId.current += 1;
-      const newId = nextCandleId.current;
-
-      setCandlesList((prevList) => {
-        const last = prevList[prevList.length - 1];
-        const basePrice = last ? last.close : 1.0868;
-        const newCandle: Candle = {
-          id: newId,
-          time: timeStr,
-          open: basePrice,
-          high: basePrice,
-          low: basePrice,
-          close: basePrice,
-          volume: Math.floor(Math.random() * 35 + 20),
-        };
-        // Guarantee no duplicates exist
-        const cleanList = prevList.filter((item) => item.id !== newId);
-        const updated = [...cleanList, newCandle];
-        return updated.length > 26 ? updated.slice(updated.length - 26) : updated;
-      });
+      };
+    } catch {
+      // WebSocket optional enhancement
     }
-  }, [secondsLeft]);
+
+    return () => {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
+  }, [selectedPair, timeframe]);
+
+  // Real UTC timeframe countdown clock (1m = 60s, 5m = 300s, 15m = 900s)
+  useEffect(() => {
+    setSecondsLeft(getSecondsToNextCandle(timeframe));
+    const countdownInterval = setInterval(() => {
+      setSecondsLeft(getSecondsToNextCandle(timeframe));
+    }, 1000);
+    return () => clearInterval(countdownInterval);
+  }, [timeframe]);
 
   // SVG Chart bounds: expanded dimensions for full presence
   const svgWidth = 640;
   const svgHeight = 290;
-  const padLeft = 58;
-  const padRight = 72;
+  const padLeft = 62;
+  const padRight = 76;
   const padTop = 22;
   const padBottom = 38;
   const volHeight = 44; // Volume sub-chart height
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom - volHeight;
 
-  const minVal = Math.min(...candlesList.map((c) => c.low)) - 0.00035;
-  const maxVal = Math.max(...candlesList.map((c) => c.high)) + 0.00035;
+  const activeCandles: Candle[] =
+    candlesList.length > 0
+      ? candlesList
+      : [
+          {
+            id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            time: formatUnixTime(Math.floor(Date.now() / 1000)),
+            open: currentPrice,
+            high: currentPrice,
+            low: currentPrice,
+            close: currentPrice,
+            volume: 10,
+            ema9: currentPrice,
+          },
+        ];
+
+  const rawMin = Math.min(...activeCandles.map((c) => Math.min(c.low, c.ema9)));
+  const rawMax = Math.max(...activeCandles.map((c) => Math.max(c.high, c.ema9)));
+  const rawSpan = Math.max(
+    rawMax - rawMin,
+    selectedPair === "XAU/USD" ? 1.2 : 0.00025
+  );
+  const padBuffer = rawSpan * 0.14;
+  const minVal = rawMin - padBuffer;
+  const maxVal = rawMax + padBuffer;
   const range = maxVal - minVal || 0.001;
 
   const getY = (price: number) => {
-    return padTop + chartH - ((price - minVal) / range) * chartH;
+    const clamped = Math.max(minVal, Math.min(maxVal, price));
+    return padTop + chartH - ((clamped - minVal) / range) * chartH;
   };
 
-  const candleCount = candlesList.length;
+  const candleCount = activeCandles.length;
   const stepX = chartW / candleCount;
   const bodyWidth = Math.max(7, stepX * 0.65);
 
   // Volume scale
-  const maxVol = Math.max(...candlesList.map((c) => c.volume), 180);
+  const maxVol = Math.max(...activeCandles.map((c) => c.volume), 1);
   const volBaseY = padTop + chartH + volHeight;
   const getVolH = (vol: number) => Math.max(3, (vol / maxVol) * (volHeight - 10));
 
-  // Price guidelines across the zoomed out window
+  // Price guidelines across the window
   const gridLevels = [
     maxVal - range * 0.1,
     maxVal - range * 0.35,
@@ -226,12 +567,10 @@ function MarketCard() {
     maxVal - range * 0.92,
   ];
 
-  // Moving Average (9-period Exponential / Simple Moving Average curve)
-  const maPoints = candlesList.map((_, i) => {
-    const windowSlice = candlesList.slice(Math.max(0, i - 8), i + 1);
-    const avgClose = windowSlice.reduce((sum, c) => sum + c.close, 0) / windowSlice.length;
+  // Real 9-period Exponential Moving Average (EMA 9) curve from candle.ema9
+  const maPoints = activeCandles.map((c, i) => {
     const cx = padLeft + i * stepX + stepX / 2;
-    const cy = getY(avgClose);
+    const cy = getY(c.ema9);
     return { cx, cy };
   });
 
@@ -241,7 +580,7 @@ function MarketCard() {
   );
 
   // Trendline & area path coordinates
-  const trendPoints = candlesList.map((c, i) => {
+  const trendPoints = activeCandles.map((c, i) => {
     const cx = padLeft + i * stepX + stepX / 2;
     const cy = getY(c.close);
     return { cx, cy };
@@ -257,28 +596,64 @@ function MarketCard() {
   const areaPathD = `${trendPathD} L ${lastPt.cx} ${padTop + chartH} L ${firstPt.cx} ${padTop + chartH} Z`;
 
   const liveY = getY(currentPrice);
+  const isPositiveDay = marketStats.changePct >= 0;
+  const bullCandlesCount = activeCandles.filter((c) => c.close >= c.open).length;
+  const buyersPct = Math.round((bullCandlesCount / Math.max(1, activeCandles.length)) * 100);
+  const volatilityPct =
+    marketStats.low24h > 0
+      ? (((marketStats.high24h - marketStats.low24h) / marketStats.low24h) * 100).toFixed(2)
+      : "0.45";
 
   return (
     <div className="market-wrap">
       <div className="glow glow-one" />
       <div className="glow glow-two" />
       <div className="market-card expanded-euro">
+        {/* Instrument Switcher Bar: EUR/USD, GBP/USD, Gold (XAU/USD) */}
+        <div className="market-pair-switcher" role="tablist" aria-label="Select live market instrument">
+          <div className="pair-switch-tabs">
+            {(["EUR/USD", "GBP/USD", "XAU/USD"] as const).map((pairId) => {
+              const cfg = HERO_PAIRS[pairId];
+              const isSelected = selectedPair === pairId;
+              return (
+                <button
+                  key={pairId}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  className={isSelected ? "pair-tab-btn active" : "pair-tab-btn"}
+                  onClick={() => setSelectedPair(pairId)}
+                >
+                  <span className="pair-tab-sym">{cfg.icon}</span>
+                  <span>{cfg.buttonLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="live-source-tag">
+            <i className="dot-pulse" />
+            {loadingChart ? "Syncing live feed..." : <>LIVE SPOT OHLCV · <b>{pairConfig.shortLabel}</b></>}
+          </span>
+        </div>
+
         <div className="market-head">
           <div className="pair-meta">
-            <span className="pair-icon">€</span>
+            <span className="pair-icon">{pairConfig.icon}</span>
             <div>
               <div className="pair-title-row">
-                <b>EUR / USD</b>
-                <span className="timeframe-badge">{timeframe.toUpperCase()} ZOOMED</span>
+                <b>{pairConfig.shortLabel}</b>
+                <span className="timeframe-badge">{timeframe.toUpperCase()} LIVE</span>
                 <span className="live-feed-pill"><i /> REAL-TIME</span>
               </div>
-              <small>Euro / U.S. Dollar · 1-Minute Live Candlesticks</small>
+              <small>
+                {pairConfig.fullName} · {tfMeta.label} Real Market Candlesticks
+              </small>
             </div>
           </div>
-          
+
           <div className="market-head-controls">
-            <div className="market-timeframe-selector">
-              {(["1m", "5m", "15m", "1h"] as const).map((tf) => (
+            <div className="market-timeframe-selector" role="group" aria-label="Select chart timeframe">
+              {(["1m", "5m", "15m"] as const).map((tf) => (
                 <button
                   key={tf}
                   className={timeframe === tf ? "tf-btn active" : "tf-btn"}
@@ -293,17 +668,23 @@ function MarketCard() {
               type="button"
               className={`indicator-toggle-btn ${showIndicators ? "active" : ""}`}
               onClick={() => setShowIndicators(!showIndicators)}
-              title="Toggle Indicators"
+              title="Toggle 9-Period Exponential Moving Average"
             >
               EMA(9)
             </button>
           </div>
 
           <div className={`price ${tickDirection ? `tick-${tickDirection}` : ""}`}>
-            <b>{currentPrice.toFixed(5)}</b>
+            <b>{currentPrice.toFixed(pairConfig.decimals)}</b>
             <div className="price-delta-row">
-              <span className="price-delta">+0.68%</span>
-              <span className="pip-delta">+74.2 pips</span>
+              <span className={`price-delta ${isPositiveDay ? "" : "neg"}`}>
+                {isPositiveDay ? "+" : ""}
+                {marketStats.changePct.toFixed(2)}%
+              </span>
+              <span className={`pip-delta ${isPositiveDay ? "" : "neg"}`}>
+                {marketStats.changePips >= 0 ? "+" : ""}
+                {marketStats.changePips.toFixed(1)} pips
+              </span>
             </div>
           </div>
         </div>
@@ -311,15 +692,23 @@ function MarketCard() {
         <div className="chart-zoom-bar">
           <div className="zoom-left">
             <span className="zoom-hint">
-              <Icon name="signal" size={14} /> 1-Min Zoomed-Out Chart · Candle closes in <b>{secondsLeft}s</b>
+              <Icon name="signal" size={14} /> {tfMeta.label} Live Chart · Candle closes in{" "}
+              <b>{formatCountdown(secondsLeft, timeframe)}</b>
             </span>
             <div className="candle-countdown-bar">
-              <div className="countdown-fill" style={{ width: `${(secondsLeft / 60) * 100}%` }} />
+              <div
+                className="countdown-fill"
+                style={{ width: `${(secondsLeft / tfMeta.seconds) * 100}%` }}
+              />
             </div>
           </div>
           <div className="zoom-right">
-            <span className="spread-badge">Spread: <b>0.2 pips</b></span>
-            <span className="sentiment-badge">Buyers: <b>67%</b></span>
+            <span className="spread-badge">
+              Spread: <b>{marketStats.spreadPips.toFixed(1)} pips</b>
+            </span>
+            <span className="sentiment-badge">
+              Buyers: <b>{buyersPct}%</b>
+            </span>
           </div>
         </div>
 
@@ -327,12 +716,16 @@ function MarketCard() {
           {/* Price Axis Labels on left */}
           <div className="chart-labels">
             {gridLevels.map((lvl, i) => (
-              <span key={`grid-label-${i}`}>{lvl.toFixed(4)}</span>
+              <span key={`grid-label-${i}`}>{lvl.toFixed(pairConfig.gridDecimals)}</span>
             ))}
             <span className="vol-axis-label">VOL</span>
           </div>
 
-          <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="none" aria-label="Live 1-minute zoomed out EUR USD candlestick chart">
+          <svg
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            preserveAspectRatio="none"
+            aria-label={`Live ${timeframe} real market ${pairConfig.shortLabel} candlestick chart`}
+          >
             <defs>
               <linearGradient id="liveAreaGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffb600" stopOpacity="0.22" />
@@ -375,15 +768,30 @@ function MarketCard() {
 
             {/* Glowing Trend Area & Path */}
             <path className="trend-area" d={areaPathD} fill="url(#liveAreaGrad)" />
-            <path className="trend-line" d={trendPathD} filter="url(#liveLineGlow)" stroke="#ffb600" strokeWidth="1.8" fill="none" opacity="0.8" />
+            <path
+              className="trend-line"
+              d={trendPathD}
+              filter="url(#liveLineGlow)"
+              stroke="#ffb600"
+              strokeWidth="1.8"
+              fill="none"
+              opacity="0.8"
+            />
 
             {/* Moving Average 9 EMA Curve */}
             {showIndicators && (
-              <path className="ema-line" d={maPathD} stroke="#38bdf8" strokeWidth="1.6" fill="none" opacity="0.85" />
+              <path
+                className="ema-line"
+                d={maPathD}
+                stroke="#38bdf8"
+                strokeWidth="1.8"
+                fill="none"
+                opacity="0.92"
+              />
             )}
 
             {/* Volume Histogram Bars */}
-            {candlesList.map((c, index) => {
+            {activeCandles.map((c, index) => {
               const isBull = c.close >= c.open;
               const cx = padLeft + index * stepX + stepX / 2;
               const vh = getVolH(c.volume);
@@ -403,8 +811,8 @@ function MarketCard() {
             })}
 
             {/* Candlestick Bars */}
-            {candlesList.map((c, index) => {
-              const isLast = index === candlesList.length - 1;
+            {activeCandles.map((c, index) => {
+              const isLast = index === activeCandles.length - 1;
               const isBull = c.close >= c.open;
               const cx = padLeft + index * stepX + stepX / 2;
               const topWickY = getY(c.high);
@@ -469,10 +877,10 @@ function MarketCard() {
             />
 
             {/* Time Axis Labels along bottom of chart */}
-            {candlesList
-              .filter((_, i) => i % 5 === 0 || i === candlesList.length - 1)
+            {activeCandles
+              .filter((_, i) => i % 5 === 0 || i === activeCandles.length - 1)
               .map((c, i, arr) => {
-                const origIndex = candlesList.findIndex((item) => item.id === c.id);
+                const origIndex = activeCandles.findIndex((item) => item.id === c.id);
                 const cx = padLeft + (origIndex >= 0 ? origIndex : i) * stepX + stepX / 2;
                 const isLast = i === arr.length - 1;
                 return (
@@ -486,7 +894,7 @@ function MarketCard() {
                     fontFamily="'DM Mono', monospace"
                     fontWeight={isLast ? "600" : "400"}
                   >
-                    {isLast ? "NOW (1m)" : c.time}
+                    {isLast ? `NOW (${timeframe})` : c.time}
                   </text>
                 );
               })}
@@ -498,18 +906,22 @@ function MarketCard() {
             style={{ top: `${Math.max(12, Math.min(235, (liveY / svgHeight) * 100))}%` }}
           >
             <span className="axis-live-dot" />
-            {currentPrice.toFixed(5)}
+            {currentPrice.toFixed(pairConfig.decimals)}
           </div>
 
           {/* Candlestick Hover Tooltip HUD */}
           {hoveredCandle && (
             <div className="candle-tooltip">
-              <span>Time: <b>{hoveredCandle.time} (1m)</b></span>
-              <span>O: <b>{hoveredCandle.open.toFixed(5)}</b></span>
-              <span>H: <b>{hoveredCandle.high.toFixed(5)}</b></span>
-              <span>L: <b>{hoveredCandle.low.toFixed(5)}</b></span>
-              <span>C: <b>{hoveredCandle.close.toFixed(5)}</b></span>
-              <span>Vol: <b>{hoveredCandle.volume}K</b></span>
+              <span>
+                Time: <b>{hoveredCandle.time} ({timeframe})</b>
+              </span>
+              <span>O: <b>{hoveredCandle.open.toFixed(pairConfig.decimals)}</b></span>
+              <span>H: <b>{hoveredCandle.high.toFixed(pairConfig.decimals)}</b></span>
+              <span>L: <b>{hoveredCandle.low.toFixed(pairConfig.decimals)}</b></span>
+              <span>C: <b>{hoveredCandle.close.toFixed(pairConfig.decimals)}</b></span>
+              {showIndicators && (
+                <span>EMA(9): <b style={{ color: "#38bdf8" }}>{hoveredCandle.ema9.toFixed(pairConfig.decimals)}</b></span>
+              )}
             </div>
           )}
         </div>
@@ -517,19 +929,23 @@ function MarketCard() {
         <div className="market-stats">
           <div>
             <span>24h High</span>
-            <b>1.08740</b>
+            <b>{marketStats.high24h.toFixed(pairConfig.decimals)}</b>
           </div>
           <div>
             <span>24h Low</span>
-            <b>1.07635</b>
+            <b>{marketStats.low24h.toFixed(pairConfig.decimals)}</b>
           </div>
           <div>
             <span>24h Volume</span>
-            <b>142.8K Lots</b>
+            <b>
+              {selectedPair === "XAU/USD"
+                ? `${marketStats.volume24h.toLocaleString()} oz`
+                : `${(marketStats.volume24h / 1000).toFixed(1)}K Lots`}
+            </b>
           </div>
           <div>
-            <span>Volatility</span>
-            <b className="text-bull">Low · 0.58%</b>
+            <span>24h Range</span>
+            <b className="text-bull">Live · {volatilityPct}%</b>
           </div>
         </div>
       </div>
@@ -543,14 +959,14 @@ function MarketCard() {
       </div>
 
       <div className="floating-live">
-        <i /> EUR/USD LIVE <b>184 watching</b>
+        <i /> {selectedPair} LIVE <b>184 watching</b>
       </div>
 
       <div className="floating-orderflow">
         <span className="dot-pulse" />
         <div>
           <small>INSTANT EXECUTION</small>
-          <b>0.2 Pip Spread · 12ms</b>
+          <b>{marketStats.spreadPips.toFixed(1)} Pip Spread · 12ms</b>
         </div>
       </div>
     </div>

@@ -503,6 +503,17 @@ function exnessSyncPlugin(): Plugin {
         return
       }
 
+      if (pathname === '/api/market/candles') {
+        const urlObj = new URL(rawUrl, 'http://localhost')
+        const symbol = urlObj.searchParams.get('symbol') || 'EUR/USD'
+        const interval = urlObj.searchParams.get('interval') || '1m'
+        const { getLiveMarketCandlesServer } = await import('./src/server/pdfQuizEngine')
+        const payload = await getLiveMarketCandlesServer(symbol, interval)
+        res.statusCode = 200
+        res.end(JSON.stringify({ success: true, ...payload }))
+        return
+      }
+
       if (pathname === '/api/quiz/generate-from-pdf' && req.method === 'POST') {
         let body = ''
         req.on('data', (chunk: any) => {
