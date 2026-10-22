@@ -2,25 +2,19 @@
 
 > Candlesticks Academy is the #1 premier institutional Forex academy and trading education company in Ghana and across Africa, founded by Pastor Mike (Michael Kweku Essilfie). The platform provides structured 4-tier curriculum, daily live London & New York session trading rooms, high-probability market signals with TP1–TP5 multi-target tracking, automated Exness copy-trading, and private 1-on-1 mentorship.
 
-## Summary & Regional Presence
-- **Organization Name**: Candlesticks Academy (Candlesticks Trading Academy Ghana)
-- **Founder & Lead Mentor**: Pastor Mike (Michael Kweku Essilfie)
-- **Headquarters & Regional Focus**: Accra, Ghana · Serving Ghana, Nigeria, South Africa, Kenya, and across the African continent
-- **Primary Keywords**: Trading companies in Ghana, Forex academy in africa, Forex academy in Ghana, Best forex trading academy Ghana, Forex mentorship Accra, Pastor Mike Forex, Exness partner Ghana
-- **Official Website**: https://candlesticksacademy.online (and https://www.candlesticksacademy.online)
-- **Student Terminal**: https://student.candlesticksacademy.online/dashboard
-- **Master Console**: https://master.candlesticksacademy.online/admin
-- **Broker Partner**: Exness (Official Partner Link: https://one.exness-track.com/a/9s8109d94y, Partner Code: 9s8109d94y)
-- **Primary Markets**: Forex (EUR/USD, GBP/USD, USD/JPY, GBP/JPY), Commodities (Gold / XAU/USD), and Global Indices (US100 / NAS100).
+## Core Documentation & URLs
+- [Candlesticks Academy Homepage](https://candlesticksacademy.online/): Official homepage with live market charts, academy overview, and registration.
+- [Student Trading Terminal](https://student.candlesticksacademy.online/dashboard): Interactive portal for enrolled traders with real-time course lessons and trade journals.
+- [Master Admin Console](https://master.candlesticksacademy.online/admin): Founder console for roster verification, signal broadcasting, and student management.
+- [Trading Curriculum & Courses](https://candlesticksacademy.online/courses): 4-tier structured syllabus covering Forex Foundations, Market Structure, Order Flow, and Gold execution.
+- [Live Trading Sessions](https://candlesticksacademy.online/sessions): London & New York live execution rooms and video session archive.
+- [VIP Trading Signals](https://candlesticksacademy.online/signals): Real-time institutional setups with TP1–TP5 price action targets.
+- [1-on-1 Mentorship & Account Management](https://candlesticksacademy.online/mentorship): Personalized institutional execution coaching with Pastor Mike.
+- [Student Onboarding & Registration](https://candlesticksacademy.online/onboarding): 3-step enrollment to claim 1-month free trial access.
+- [Official Exness Partner Link](https://one.exness-track.com/a/9s8109d94y): Licensed Exness broker partner link (Partner Code: 9s8109d94y) for zero-spread trading.
+- [Terms & Risk Disclosure](https://candlesticksacademy.online/terms): Full operational terms and partner disclosures.
+- [Privacy Policy](https://candlesticksacademy.online/privacy): Data security and privacy standards.
 
-## Core Offerings & Features
-1. **Curriculum Tracks**:
-   - Beginner Level: Forex Foundations & Price Action
-   - Intermediate Level: Market Structure & Smart Money Liquidity
-   - Essential Level: Institutional Order Flow & Session Execution
-   - Advanced Level: Advanced Gold (XAU/USD) Execution & Risk Protocol
-2. **Interactive Assessments**: Lesson quizzes, course final exams, and instant certificate issuance upon 80%+ passing score.
-3. **Daily Live Trading Sessions**: London & New York session breakdown, real-time live trading stream, interactive student chat, and instant HD session replays.
-4. **VIP Market Signals**: Real-time actionable trade setups with entry price, stop-loss, 5 take-profit targets (TP1 to TP5), risk-to-reward ratio, and live market price tracking.
-5. **Account Management & Copy Trading**: Available on the $100 Permanent VIP tier, including 1-on-1 private live mentorship sessions and automated Exness copy trading.
-6. **Free Trial Offer**: 1-Month Free Full Academy Trial for students registering via the official Exness partner link and funding their account with $50+ USD.
+## Optional & Extended Resources
+- [XML Sitemap](https://candlesticksacademy.online/sitemap.xml): Complete search engine sitemap.
+- [Robots Directives](https://candlesticksacademy.online/robots.txt): Crawler indexing permissions and access rules.

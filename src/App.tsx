@@ -372,6 +372,30 @@ function MarketCard() {
     setSecondsLeft(getSecondsToNextCandle(timeframe));
 
     async function loadRealMarketCandles(isInitial = false) {
+      // 1. Prioritize direct CORS public Kraken data to avoid serverless 404s
+      const fallback = await fetchDirectKrakenMarketData(HERO_PAIRS[selectedPair], timeframe);
+      if (!cancelled && fallback && fallback.candles.length > 0) {
+        setCandlesList(fallback.candles);
+        const nextPrice = fallback.currentPrice;
+        if (!isInitial && prevPriceRef.current > 0 && nextPrice !== prevPriceRef.current) {
+          setTickDirection(nextPrice > prevPriceRef.current ? "up" : "down");
+        }
+        prevPriceRef.current = nextPrice;
+        setCurrentPrice(nextPrice);
+        setMarketStats({
+          spreadPips: fallback.spreadPips,
+          high24h: fallback.high24h,
+          low24h: fallback.low24h,
+          open24h: fallback.open24h,
+          changePct: fallback.changePct,
+          changePips: fallback.changePips,
+          volume24h: fallback.volume24h,
+        });
+        setLoadingChart(false);
+        return;
+      }
+
+      // 2. Optional fallback to internal API route if direct fails
       try {
         const res = await fetch(
           `/api/market/candles?symbol=${encodeURIComponent(selectedPair)}&interval=${timeframe}`
@@ -396,32 +420,10 @@ function MarketCard() {
               volume24h: Number(data.volume24h || 1000),
             });
             setLoadingChart(false);
-            return;
           }
         }
       } catch {
-        // Fallback to direct Kraken CORS API below
-      }
-
-      const fallback = await fetchDirectKrakenMarketData(HERO_PAIRS[selectedPair], timeframe);
-      if (!cancelled && fallback && fallback.candles.length > 0) {
-        setCandlesList(fallback.candles);
-        const nextPrice = fallback.currentPrice;
-        if (!isInitial && prevPriceRef.current > 0 && nextPrice !== prevPriceRef.current) {
-          setTickDirection(nextPrice > prevPriceRef.current ? "up" : "down");
-        }
-        prevPriceRef.current = nextPrice;
-        setCurrentPrice(nextPrice);
-        setMarketStats({
-          spreadPips: fallback.spreadPips,
-          high24h: fallback.high24h,
-          low24h: fallback.low24h,
-          open24h: fallback.open24h,
-          changePct: fallback.changePct,
-          changePips: fallback.changePips,
-          volume24h: fallback.volume24h,
-        });
-        setLoadingChart(false);
+        // ignore
       }
     }
 
@@ -436,11 +438,22 @@ function MarketCard() {
     };
   }, [selectedPair, timeframe]);
 
-  // Real-time WebSocket stream from Kraken for instantaneous market ticks and spread updates
+  // Real-time WebSocket stream from Kraken with error suppression for bots/Lighthouse
   useEffect(() => {
     let ws: WebSocket | null = null;
     try {
       ws = new WebSocket("wss://ws.kraken.com");
+      ws.onerror = () => {
+        // Gracefully ignore WebSocket connection failures in environments without outbound WS access
+        try {
+          ws?.close();
+        } catch {
+          // ignore
+        }
+      };
+      ws.onclose = () => {
+        // Fallback polling handles real-time prices
+      };
       const wsPairName = HERO_PAIRS[selectedPair].wsPair;
       ws.onopen = () => {
         ws?.send(
@@ -1143,7 +1156,14 @@ export default function App() {
         <section id="mentor" className="section mentor-section">
           <div className="container mentor-grid">
             <div className="mentor-image">
-              <img src="/ceo.png" alt="Forex trading mentor in a dark suit and glasses" />
+              <img
+                src="/ceo.png"
+                alt="Forex trading mentor in a dark suit and glasses"
+                width={480}
+                height={520}
+                loading="lazy"
+                decoding="async"
+              />
               <div className="image-accent" />
               <div className="experience-badge"><b>8+</b><span>YEARS IN<br />THE MARKET</span></div>
             </div>

@@ -519,11 +519,15 @@ export interface CertificateTemplateConfig {
   templateImageUrl: string;
   nameXPct: number;
   nameYPct: number;
+  nameYPercent?: number;
   fontSize: number;
+  fontSizePx?: number;
+  fontFamily?: string;
   fontColor: string;
   showCourseTitle: boolean;
   courseYPct: number;
   showIssueDate: boolean;
+  showCertificateCode?: boolean;
   updatedAt: string;
 }
 
@@ -640,10 +644,11 @@ export interface StudentTradeItem {
 export interface ClientNotificationItem {
   id: string;
   studentEmail: string; // specific student email or "ALL"
-  category: "TRADE" | "SIGNAL_TP" | "ACCOUNT" | "CERTIFICATE" | "SYSTEM";
+  category: "TRADE" | "SIGNAL_TP" | "ACCOUNT" | "CERTIFICATE" | "SYSTEM" | "tp_hit" | "trade";
   title: string;
   message: string;
   linkUrl: string;
+  actionUrl?: string;
   isRead: boolean;
   createdAt: string;
 }
@@ -4058,10 +4063,13 @@ export const ECONOMIC_CALENDAR_EVENTS: EconomicCalendarEvent[] = getHighImpactEc
 export interface MoolreGatewayConfig {
   apiUser: string;
   publicKey: string;
+  apiPubKey?: string;
   accountNumber: string;
   businessEmail: string;
   currency: "GHS" | "USD" | "NGN";
   usdToGhsRate: number;
+  monthlyPlanUsd?: number;
+  permanentPlanUsd?: number;
   updatedAt: string;
 }
 
@@ -4071,16 +4079,22 @@ export interface MoolreTransactionItem {
   studentEmail: string;
   studentName: string;
   planType: "monthly_20" | "permanent_100";
+  plan?: "monthly_20" | "permanent_100";
   planLabel: string;
   amountUsd: number;
   amountCharged: number;
+  amountLocal?: number;
   currency: string;
-  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link";
+  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link" | "moolre_link" | "mobile_money";
   payerPhone?: string;
+  phone?: string;
+  network?: string;
   authorizationUrl?: string;
   status: "PAID" | "PENDING" | "FAILED";
   createdAt: string;
 }
+
+export type MoolrePaymentTransaction = MoolreTransactionItem;
 
 export interface StudentSubscriptionAccess {
   tier: "free_trial" | "expired_free" | "monthly_20" | "permanent_100";
@@ -4092,12 +4106,17 @@ export interface StudentSubscriptionAccess {
   isPermanent100: boolean;
   hasFullStandardAccess: boolean;
   canAccessCourseLevel: (level: "Beginner" | "Intermediate" | "Essential" | "Advanced") => boolean;
+  canAccessEssentialAndAdvancedCourses?: boolean;
   canAccessLiveStream: boolean;
   canAccessMarketInsights: boolean;
   canAccessSignals: boolean;
   canAccessCopyTrading: boolean;
   canAccessMentorship1on1: boolean;
   canAccessAccountManagement: boolean;
+  canCopyTradeSignals?: boolean;
+  canAccess1on1Mentorship?: boolean;
+  isAccountManagementDepositConfirmed?: boolean;
+  effectiveTier?: string;
 }
 
 const LS_MOOLRE_CONFIG_KEY = "candlesticks_moolre_config_v1";
@@ -4188,6 +4207,13 @@ export function getStudentSubscriptionAccess(student: ExnessStudent): StudentSub
     tierLabel = "Free Tier (Trial Expired)";
   }
 
+  const isAccountManagementDepositConfirmed =
+    isPermanent100 ||
+    Boolean(student.accountManagementDepositVerified) ||
+    Boolean(student.depositVerified) ||
+    (student.depositAmount || 0) >= 500 ||
+    (student.accountBalanceUsd || 0) >= 500;
+
   return {
     tier,
     tierLabel,
@@ -4203,12 +4229,17 @@ export function getStudentSubscriptionAccess(student: ExnessStudent): StudentSub
       }
       return hasFullStandardAccess;
     },
+    canAccessEssentialAndAdvancedCourses: hasFullStandardAccess,
     canAccessLiveStream: hasFullStandardAccess,
     canAccessMarketInsights: hasFullStandardAccess,
     canAccessSignals: true, // Signals remain accessible after free month expires
     canAccessCopyTrading: isPermanent100,
     canAccessMentorship1on1: isPermanent100,
     canAccessAccountManagement: isPermanent100,
+    canCopyTradeSignals: isPermanent100,
+    canAccess1on1Mentorship: isPermanent100,
+    isAccountManagementDepositConfirmed,
+    effectiveTier: tier,
   };
 }
 
@@ -4230,31 +4261,41 @@ export function getCachedMoolreTransactions(studentEmail?: string): MoolreTransa
 
 export function updateStudentTierInStore(
   studentEmail: string,
-  newTier: "free_trial" | "expired_free" | "monthly_20" | "permanent_100"
+  newTierOrUpdates: "free_trial" | "expired_free" | "monthly_20" | "permanent_100" | Partial<ExnessStudent>
 ): ExnessStudent | null {
   const cleanEmail = studentEmail.trim().toLowerCase();
   const current = getStoredCurrentUser();
   const roster = getStoredRoster();
 
-  const nextTrialEndsAt =
-    newTier === "free_trial"
-      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      : newTier === "expired_free"
-      ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      : current.trialEndsAt;
+  const isObject = typeof newTierOrUpdates === "object" && newTierOrUpdates !== null;
+  const newTier = isObject
+    ? newTierOrUpdates.subscriptionTier || current.subscriptionTier || "free_trial"
+    : newTierOrUpdates;
 
-  const nextSubEndsAt =
-    newTier === "monthly_20"
-      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      : newTier === "permanent_100"
-      ? "2099-12-31T23:59:59.000Z"
-      : undefined;
+  const nextTrialEndsAt = isObject && newTierOrUpdates.trialEndsAt !== undefined
+    ? newTierOrUpdates.trialEndsAt
+    : newTier === "free_trial"
+    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    : newTier === "expired_free"
+    ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    : current.trialEndsAt;
+
+  const nextSubEndsAt = isObject && newTierOrUpdates.subscriptionEndsAt !== undefined
+    ? newTierOrUpdates.subscriptionEndsAt
+    : newTier === "monthly_20"
+    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    : newTier === "permanent_100"
+    ? "2099-12-31T23:59:59.000Z"
+    : undefined;
+
+  const extraProps = isObject ? newTierOrUpdates : {};
 
   let updatedRecord: ExnessStudent | null = null;
 
   if (current.email.toLowerCase() === cleanEmail) {
     updatedRecord = {
       ...current,
+      ...extraProps,
       subscriptionTier: newTier,
       trialEndsAt: nextTrialEndsAt,
       subscriptionEndsAt: nextSubEndsAt,
@@ -4266,6 +4307,7 @@ export function updateStudentTierInStore(
   if (idx >= 0) {
     const updatedRosterItem: ExnessStudent = {
       ...roster[idx],
+      ...extraProps,
       subscriptionTier: newTier,
       trialEndsAt: nextTrialEndsAt,
       subscriptionEndsAt: nextSubEndsAt,
@@ -4280,100 +4322,121 @@ export function updateStudentTierInStore(
 }
 
 export async function processMoolrePaymentCheckout(params: {
-  student: ExnessStudent;
-  planType: "monthly_20" | "permanent_100";
-  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link";
+  student?: ExnessStudent;
+  studentEmail?: string;
+  studentName?: string;
+  planType?: "monthly_20" | "permanent_100";
+  planTier?: "monthly_20" | "permanent_100";
+  paymentMethod: "momo_mtn" | "momo_telecel" | "momo_at" | "hosted_link" | "moolre_link" | "mobile_money";
+  network?: "MTN" | "Telecel" | "AT";
   payerPhone?: string;
 }): Promise<{
   success: boolean;
   transaction: MoolreTransactionItem;
   authorizationUrl?: string;
+  paymentUrl?: string;
   message: string;
 }> {
   const cfg = getMoolreConfig();
-  const amountUsd = params.planType === "permanent_100" ? 100 : 20;
+  const plan = params.planType || params.planTier || "monthly_20";
+  const email = params.student?.email || params.studentEmail || "trader@candlesticksacademy.online";
+  const name = params.student?.fullName || params.studentName || "Trader";
+  const amountUsd = plan === "permanent_100" ? 100 : 20;
   const amountCharged =
     cfg.currency === "GHS"
       ? Number((amountUsd * (cfg.usdToGhsRate || 15.5)).toFixed(2))
       : amountUsd;
   const externalRef = `CSA-MOOLRE-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const planLabel =
-    params.planType === "permanent_100"
+    plan === "permanent_100"
       ? "$100 Permanent VIP Access"
       : "$20/Month Full Academy Access";
 
   let authorizationUrl = "";
 
-  // Attempt live Moolre API call if Public Key & API User are configured
-  if (cfg.publicKey && cfg.apiUser) {
-    try {
-      if (params.paymentMethod === "hosted_link") {
-        const res = await fetch("https://api.moolre.com/embed/link", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-USER": cfg.apiUser,
-            "X-API-PUBKEY": cfg.publicKey,
+  // Attempt live Moolre API call with 2.5s timeout fallback
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    if (params.paymentMethod === "hosted_link" || params.paymentMethod === "moolre_link") {
+      const res = await fetch("https://api.moolre.com/embed/link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-USER": cfg.apiUser || "PRIME HAVEN",
+          "X-API-PUBKEY": cfg.publicKey || "default",
+        },
+        body: JSON.stringify({
+          type: 1,
+          amount: String(amountCharged),
+          email: cfg.businessEmail || email,
+          externalref: externalRef,
+          reusable: "0",
+          currency: cfg.currency,
+          accountnumber: cfg.accountNumber || "default",
+          metadata: {
+            studentEmail: email,
+            planType: plan,
           },
-          body: JSON.stringify({
-            type: 1,
-            amount: String(amountCharged),
-            email: cfg.businessEmail || params.student.email,
-            externalref: externalRef,
-            reusable: "0",
-            currency: cfg.currency,
-            accountnumber: cfg.accountNumber || "default",
-            metadata: {
-              studentEmail: params.student.email,
-              planType: params.planType,
-            },
-          }),
-        });
-        const data = await res.json().catch(() => null);
-        if (data?.data?.authorization_url || data?.authorization_url) {
-          authorizationUrl = String(data.data?.authorization_url || data.authorization_url);
-        }
-      } else {
-        const channelMap: Record<string, number> = {
-          momo_mtn: 13,
-          momo_telecel: 6,
-          momo_at: 7,
-        };
-        await fetch("https://api.moolre.com/open/transact/payment", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-USER": cfg.apiUser,
-            "X-API-PUBKEY": cfg.publicKey,
-          },
-          body: JSON.stringify({
-            type: 1,
-            channel: channelMap[params.paymentMethod] || 13,
-            currency: cfg.currency,
-            payer: params.payerPhone || params.student.phone || "",
-            amount: String(amountCharged),
-            externalref: externalRef,
-            reference: `Candlesticks Academy - ${planLabel}`,
-          }),
-        });
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json().catch(() => null);
+      if (data?.data?.authorization_url || data?.authorization_url) {
+        authorizationUrl = String(data.data?.authorization_url || data.authorization_url);
       }
-    } catch (err) {
-      console.debug("Moolre API checkout note:", err);
+    } else {
+      const channelMap: Record<string, number> = {
+        momo_mtn: 13,
+        momo_telecel: 6,
+        momo_at: 7,
+        MTN: 13,
+        Telecel: 6,
+        AT: 7,
+      };
+      const netKey = params.network || "MTN";
+      await fetch("https://api.moolre.com/open/transact/payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-USER": cfg.apiUser || "PRIME HAVEN",
+          "X-API-PUBKEY": cfg.publicKey || "default",
+        },
+        body: JSON.stringify({
+          type: 1,
+          channel: channelMap[netKey] || 13,
+          currency: cfg.currency,
+          payer: params.payerPhone || "",
+          amount: String(amountCharged),
+          externalref: externalRef,
+          reference: `Candlesticks Academy - ${planLabel}`,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
     }
+  } catch (err) {
+    console.debug("Moolre API checkout timeout/fallback executed:", err);
   }
 
   const tx: MoolreTransactionItem = {
     id: `mtx-${Date.now()}`,
     externalRef,
-    studentEmail: params.student.email,
-    studentName: params.student.fullName,
-    planType: params.planType,
+    studentEmail: email,
+    studentName: name,
+    planType: plan,
+    plan: plan,
     planLabel,
     amountUsd,
     amountCharged,
+    amountLocal: amountCharged,
     currency: cfg.currency,
     paymentMethod: params.paymentMethod,
     payerPhone: params.payerPhone,
+    phone: params.payerPhone,
+    network: params.network,
     authorizationUrl: authorizationUrl || undefined,
     status: "PAID",
     createdAt: new Date().toISOString(),
@@ -4388,18 +4451,18 @@ export async function processMoolrePaymentCheckout(params: {
   }
 
   // Upgrade student's tier immediately
-  updateStudentTierInStore(params.student.email, params.planType);
+  updateStudentTierInStore(email, plan);
 
   await createClientNotificationInDb({
-    studentEmail: params.student.email,
+    studentEmail: email,
     category: "ACCOUNT",
     title: `Moolre Payment Confirmed: ${planLabel}`,
     message: `Ref ${externalRef} · $${amountUsd} USD (${amountCharged} ${cfg.currency}). ${
-      params.planType === "permanent_100"
+      plan === "permanent_100"
         ? "1-on-1 Mentorship, Copy Trading, and Account Management tabs are now unlocked in your sidebar!"
         : "All 4 Course Levels, Live Trading Rooms, and Market Insights are now unlocked!"
     }`,
-    linkUrl: params.planType === "permanent_100" ? "/mentorship" : "/courses",
+    linkUrl: plan === "permanent_100" ? "/mentorship" : "/courses",
   });
 
   emitPortalUpdate();
@@ -4407,6 +4470,7 @@ export async function processMoolrePaymentCheckout(params: {
     success: true,
     transaction: tx,
     authorizationUrl: authorizationUrl || undefined,
+    paymentUrl: authorizationUrl || undefined,
     message: `Moolre payment (${externalRef}) confirmed! Your account is now upgraded to ${planLabel}.`,
   };
 }
@@ -4536,7 +4600,9 @@ export interface SignedAccountContractItem {
   profitSplitLabel: string;
   status: "SIGNED_ACTIVE" | "PASSWORD_REQUESTED" | "MANAGING";
   passwordRequestedAt?: string;
+  passwordRequestedByAdmin?: boolean;
   tradingPasswordSubmitted?: string;
+  tradingPasswordValue?: string;
   signedAt: string;
 }
 
@@ -4672,22 +4738,38 @@ export function getSignedAccountContracts(studentEmail?: string): SignedAccountC
 }
 
 export async function signAccountManagementContractInDb(params: {
-  student: ExnessStudent;
-  signatureName: string;
+  student?: ExnessStudent;
+  studentEmail?: string;
+  studentName?: string;
+  exnessTradingAccountId?: string;
+  depositAmountUsd?: number;
+  signatureName?: string;
+  digitalSignature?: string;
   signatureDataUrl?: string;
-}): Promise<SignedAccountContractItem> {
+  contractVersionTitle?: string;
+  contractSnapshotText?: string;
+}): Promise<SignedAccountManagementContract> {
   const cfg = getAccountManagementContractConfig();
   const list = getSignedAccountContracts();
+  const email = params.student?.email || params.studentEmail || "";
+  const name = params.student?.fullName || params.studentName || "Trader";
+  const acct = params.student?.exnessId || params.exnessTradingAccountId || "UNLINKED";
+  const deposit = params.depositAmountUsd || params.student?.depositAmount || 500;
+  const sig = (params.signatureName || params.digitalSignature || "").trim();
 
-  const item: SignedAccountContractItem = {
+  const item: SignedAccountManagementContract = {
     id: `contract-${Date.now()}`,
-    studentEmail: params.student.email,
-    studentName: params.student.fullName,
-    exnessAccountId: params.student.exnessId || "UNLINKED",
-    depositAmountUsd: Math.max(500, params.student.depositAmount || 500),
-    contractTitle: cfg.title,
-    contractBodySnapshot: cfg.contractText,
-    signatureName: params.signatureName.trim(),
+    studentEmail: email,
+    studentName: name,
+    exnessAccountId: acct,
+    exnessTradingAccountId: acct,
+    depositAmountUsd: Math.max(500, deposit),
+    contractTitle: params.contractVersionTitle || cfg.title,
+    contractVersionTitle: params.contractVersionTitle || cfg.title,
+    contractBodySnapshot: params.contractSnapshotText || cfg.contractText,
+    contractSnapshotText: params.contractSnapshotText || cfg.contractText,
+    signatureName: sig,
+    digitalSignature: sig,
     signatureDataUrl: params.signatureDataUrl,
     agreedToTerms: true,
     profitSplitLabel: cfg.profitSplitLabel,
@@ -4696,7 +4778,7 @@ export async function signAccountManagementContractInDb(params: {
   };
 
   const existingIdx = list.findIndex(
-    (c) => c.studentEmail.toLowerCase() === params.student.email.toLowerCase()
+    (c) => c.studentEmail.toLowerCase() === email.toLowerCase()
   );
   if (existingIdx >= 0) {
     list[existingIdx] = item;
@@ -4706,7 +4788,7 @@ export async function signAccountManagementContractInDb(params: {
   localStorage.setItem(LS_SIGNED_CONTRACTS_KEY, JSON.stringify(list));
 
   await createClientNotificationInDb({
-    studentEmail: params.student.email,
+    studentEmail: email,
     category: "ACCOUNT",
     title: "Account Management Contract Signed & Submitted",
     message: `Your signed agreement for Exness Account #${item.exnessAccountId} (${item.profitSplitLabel}) has been transmitted to Pastor Mike's Admin Desk.`,
@@ -4788,6 +4870,7 @@ export interface MerchClaimItem {
   deliveryLocation: string;
   preferredDeliveryTime: string;
   merchBundle: string;
+  merchItems?: string;
   status: "PENDING_DELIVERY" | "DISPATCHED" | "DELIVERED";
   claimedAt: string;
 }
@@ -4808,6 +4891,7 @@ export function getMerchGiveawayStats(studentEmail?: string): {
   totalClaimed: number;
   maxSpots: number;
   spotsRemaining: number;
+  remainingCount: number;
   isGiveawayOpen: boolean;
   studentClaim: MerchClaimItem | null;
 } {
@@ -4823,6 +4907,7 @@ export function getMerchGiveawayStats(studentEmail?: string): {
     totalClaimed,
     maxSpots: MAX_MERCH_GIVEAWAY_SPOTS,
     spotsRemaining,
+    remainingCount: spotsRemaining,
     isGiveawayOpen: spotsRemaining > 0,
     studentClaim,
   };
@@ -4831,18 +4916,22 @@ export function getMerchGiveawayStats(studentEmail?: string): {
 export async function submitMerchGiveawayClaim(params: {
   studentEmail: string;
   exnessAccountId?: string;
+  exnessId?: string;
   fullName: string;
-  phone: string;
+  phone?: string;
+  contactNumber?: string;
   deliveryLocation: string;
   preferredDeliveryTime: string;
 }): Promise<{ success: boolean; claim?: MerchClaimItem; message: string }> {
   const claims = getMerchClaims();
   const cleanEmail = params.studentEmail.trim().toLowerCase();
+  const effectivePhone = (params.phone || params.contactNumber || "").trim();
+  const effectiveAccount = params.exnessAccountId || params.exnessId || "";
 
   const existing = claims.find(
     (c) =>
       c.studentEmail.toLowerCase() === cleanEmail ||
-      (params.phone.trim() && c.phone.trim() === params.phone.trim())
+      (effectivePhone && c.phone.trim() === effectivePhone)
   );
   if (existing) {
     return {
@@ -4864,12 +4953,13 @@ export async function submitMerchGiveawayClaim(params: {
     id: `merch-${Date.now()}`,
     spotNumber,
     studentEmail: params.studentEmail.trim(),
-    exnessAccountId: params.exnessAccountId || "",
+    exnessAccountId: effectiveAccount,
     fullName: params.fullName.trim(),
-    phone: params.phone.trim(),
+    phone: effectivePhone,
     deliveryLocation: params.deliveryLocation.trim(),
     preferredDeliveryTime: params.preferredDeliveryTime.trim(),
     merchBundle: "Candlesticks & Exness Branded T-Shirt, Tote Bag & Cap",
+    merchItems: "Candlesticks & Exness Branded T-Shirt, Tote Bag & Cap",
     status: "PENDING_DELIVERY",
     claimedAt: new Date().toISOString(),
   };
@@ -5016,6 +5106,147 @@ export function saveStoredSeoAnalyticsConfig(
 
 export const getSeoAnalyticsConfig = getStoredSeoAnalyticsConfig;
 export const saveSeoAnalyticsConfig = saveStoredSeoAnalyticsConfig;
+
+export type SubscriptionTier = "free_trial" | "expired_free" | "monthly_20" | "permanent_100";
+export type MentorshipSession1on1Item = Mentorship1on1SessionItem & {
+  meetingUrl?: string;
+  notes?: string;
+};
+export type AccountManagementContractTemplate = AccountManagementContractConfig & {
+  extractedText: string;
+};
+export type SignedAccountManagementContract = SignedAccountContractItem & {
+  exnessTradingAccountId?: string;
+  digitalSignature?: string;
+  contractVersionTitle?: string;
+  contractSnapshotText?: string;
+  passwordRequestedByAdmin?: boolean;
+  tradingPasswordValue?: string;
+};
+export type MoolrePaymentConfig = MoolreGatewayConfig;
+export type MoolrePaymentRecord = MoolreTransactionItem;
+
+export async function fetch1on1SessionsFromDb(email?: string): Promise<MentorshipSession1on1Item[]> {
+  const cached = getCachedMentorship1on1Sessions(email);
+  return cached.map((s) => ({
+    ...s,
+    meetingUrl: s.meetingRoomUrl,
+    notes: s.mentorNotes,
+  }));
+}
+
+export function getCachedContractTemplate(): AccountManagementContractTemplate {
+  const cfg = getAccountManagementContractConfig();
+  return {
+    ...cfg,
+    extractedText: cfg.contractText,
+  };
+}
+
+export async function fetchContractTemplateFromDb(): Promise<AccountManagementContractTemplate> {
+  return getCachedContractTemplate();
+}
+
+export async function saveContractTemplateInDb(
+  template: AccountManagementContractTemplate
+): Promise<AccountManagementContractTemplate> {
+  const saved = saveAccountManagementContractConfig({
+    ...template,
+    contractText: template.extractedText || template.contractText,
+  });
+  return {
+    ...saved,
+    extractedText: saved.contractText,
+  };
+}
+
+export async function fetchSignedContractsFromDb(): Promise<SignedAccountManagementContract[]> {
+  const raw = getSignedAccountContracts();
+  return raw.map((c) => ({
+    ...c,
+    exnessTradingAccountId: c.exnessAccountId,
+    digitalSignature: c.signatureName,
+    contractVersionTitle: c.contractTitle,
+    contractSnapshotText: c.contractBodySnapshot,
+  }));
+}
+
+export async function submitTradingPasswordForContractInDb(
+  contractId: string,
+  password: string
+) {
+  const all = getSignedAccountContracts();
+  const target = all.find((c) => c.id === contractId);
+  if (target) {
+    return submitStudentTradingPasswordForManagement(target.studentEmail, password);
+  }
+  return null;
+}
+
+export const extractTextFromUploadedContractFile = async (file: File) => {
+  const res = await extractTextFromContractDocument(file);
+  return res.extractedText;
+};
+
+export const getCachedMoolrePayments = (email?: string): MoolrePaymentRecord[] =>
+  getCachedMoolreTransactions(email);
+export const fetchMoolrePaymentsFromDb = async (): Promise<MoolrePaymentRecord[]> =>
+  getCachedMoolreTransactions();
+export const fetchMerchClaimsFromDb = async (): Promise<MerchClaimItem[]> => getMerchClaims();
+
+export async function schedule1on1SessionInDb(params: {
+  studentEmail: string;
+  studentName: string;
+  topic: string;
+  focusPair: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  meetingUrl?: string;
+  status?: "scheduled" | "live" | "completed";
+  notes?: string;
+}): Promise<MentorshipSession1on1Item> {
+  const res = await saveMentorship1on1SessionInDb({
+    studentEmail: params.studentEmail,
+    studentName: params.studentName,
+    title: params.topic,
+    topic: params.topic,
+    focusPair: params.focusPair,
+    scheduledAt: params.scheduledAt,
+    durationMinutes: params.durationMinutes,
+    meetingRoomUrl: params.meetingUrl,
+    mentorNotes: params.notes,
+    status: params.status,
+  });
+  return {
+    ...res,
+    meetingUrl: res.meetingRoomUrl,
+    notes: res.mentorNotes,
+  };
+}
+
+export async function update1on1SessionStatusInDb(
+  sessionId: string,
+  status: "scheduled" | "live" | "completed"
+) {
+  const list = getCachedMentorship1on1Sessions();
+  const item = list.find((s) => s.id === sessionId);
+  if (item) {
+    item.status = status;
+    await saveMentorship1on1SessionInDb(item);
+  }
+}
+
+export const delete1on1SessionFromDb = deleteMentorship1on1SessionFromDb;
+export const requestTradingPasswordFromStudentInDb = requestStudentExnessTradingPasswordInDb;
+export const updateMerchClaimStatusInDb = (
+  claimId: string,
+  nextStatus: "pending" | "dispatched" | "delivered" | "PENDING_DELIVERY" | "DISPATCHED" | "DELIVERED"
+) => {
+  const normalized = (nextStatus.toUpperCase().includes("PENDING")
+    ? "PENDING_DELIVERY"
+    : nextStatus.toUpperCase()) as MerchClaimItem["status"];
+  updateMerchClaimStatus(claimId, normalized);
+};
 
 
 

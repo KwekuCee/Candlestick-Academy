@@ -107,6 +107,27 @@ import {
   saveMoolreConfig,
   saveSeoAnalyticsConfig,
   SeoAnalyticsConfig,
+  AccountManagementContractTemplate,
+  delete1on1SessionFromDb,
+  evaluateSignalsAgainstLiveMarket,
+  extractTextFromUploadedContractFile,
+  fetch1on1SessionsFromDb,
+  fetchContractTemplateFromDb,
+  fetchMerchClaimsFromDb,
+  fetchMoolrePaymentsFromDb,
+  fetchSignedContractsFromDb,
+  getCachedContractTemplate,
+  getCachedMoolrePayments,
+  MentorshipSession1on1Item,
+  MoolrePaymentConfig,
+  MoolrePaymentRecord,
+  requestTradingPasswordFromStudentInDb,
+  saveContractTemplateInDb,
+  schedule1on1SessionInDb,
+  submitTradingPasswordForContractInDb,
+  SubscriptionTier,
+  update1on1SessionStatusInDb,
+  updateMerchClaimStatusInDb,
   sendMentorMessageInDb,
   sendSessionChatMessageInDb,
   signAccountManagementContractInDb,
@@ -136,6 +157,7 @@ import {
   Clock,
   Copy,
   CreditCard,
+  Crown,
   Database,
   DollarSign,
   Download,
@@ -143,6 +165,7 @@ import {
   Eye,
   EyeOff,
   FileCode,
+  FileSignature,
   FileText,
   Filter,
   Flame,
@@ -204,7 +227,8 @@ type IconName =
   | "trades"
   | "trend"
   | "users"
-  | "video";
+  | "video"
+  | "wallet";
 
 const iconPaths: Record<IconName, ReactNode> = {
   admin: (
@@ -302,6 +326,11 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <rect x="3" y="5" width="14" height="14" rx="2" />
       <path d="M17 10l4-3v10l-4-3" />
+    </>
+  ),
+  wallet: (
+    <>
+      <path d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 100 4 2 2 0 000-4z" />
     </>
   ),
 };
@@ -491,12 +520,15 @@ export function MoolreCheckoutModal({
   initialPlan = "monthly_20",
   onClose,
   onSuccess,
+  student: studentProp,
 }: {
   initialPlan?: "monthly_20" | "permanent_100";
   onClose: () => void;
   onSuccess?: () => void;
+  student?: ExnessStudent;
 }) {
-  const student = useCurrentStudent();
+  const currentStudent = useCurrentStudent();
+  const student = studentProp || currentStudent;
   const moolreCfg = getMoolreConfig();
   const [selectedPlan, setSelectedPlan] = useState<"monthly_20" | "permanent_100">(initialPlan);
   const [paymentMethod, setPaymentMethod] = useState<"moolre_link" | "mobile_money">("mobile_money");
@@ -538,26 +570,26 @@ export function MoolreCheckoutModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#11151f] border-2 border-[#ffb600] rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-5 shadow-2xl text-left">
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#0b0e14] border-2 border-[#ffb600] rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-6 shadow-2xl text-left">
         <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] flex items-center justify-center shrink-0">
-              <CreditCard size={22} />
+            <div className="w-12 h-12 rounded-2xl bg-[#ffb600]/15 border border-[#ffb600]/40 text-[#ffb600] flex items-center justify-center shrink-0">
+              <CreditCard size={24} />
             </div>
             <div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#ffb600]">
-                MOOLRE PAYMENT GATEWAY (M-O-O-L-R-E)
+                MOOLRE SECURE PAYMENT GATEWAY
               </span>
               <h2 className="text-lg sm:text-xl font-extrabold text-white mt-0.5">
-                Upgrade Your Academy Membership
+                Candlesticks Academy Membership Upgrade
               </h2>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#9aa4b5] hover:text-white cursor-pointer"
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#9aa4b5] hover:text-white cursor-pointer transition"
           >
             <X size={16} />
           </button>
@@ -570,21 +602,21 @@ export function MoolreCheckoutModal({
             onClick={() => setSelectedPlan("monthly_20")}
             className={`p-4 rounded-2xl border-2 text-left transition cursor-pointer ${
               selectedPlan === "monthly_20"
-                ? "bg-[#ffb600]/12 border-[#ffb600]"
-                : "bg-[#161b26] border-white/10 hover:border-white/25"
+                ? "bg-[#ffb600]/15 border-[#ffb600]"
+                : "bg-[#141821] border-white/10 hover:border-white/20"
             }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                 MONTHLY ACCESS
               </span>
-              {selectedPlan === "monthly_20" && <CheckCircle2 size={15} className="text-[#ffb600]" />}
+              {selectedPlan === "monthly_20" && <CheckCircle2 size={16} className="text-[#ffb600]" />}
             </div>
             <div className="text-2xl font-mono font-extrabold text-white mt-1">
               $20 <small className="text-xs text-[#9aa4b5] font-normal">/ month</small>
             </div>
-            <p className="text-[11px] text-[#b4bccb] mt-1.5 leading-relaxed">
-              Unlocks all 4 Course Levels (Beginner, Intermediate, Essential &amp; Advanced), Live Stream, Market Insights &amp; Signals.
+            <p className="text-[11px] text-[#b4bccb] mt-2 leading-relaxed">
+              Unlocks all 4 Course Levels, Live Trading Rooms, Market Insights &amp; Signals.
             </p>
           </button>
 
@@ -593,21 +625,21 @@ export function MoolreCheckoutModal({
             onClick={() => setSelectedPlan("permanent_100")}
             className={`p-4 rounded-2xl border-2 text-left transition cursor-pointer ${
               selectedPlan === "permanent_100"
-                ? "bg-[#ffb600]/12 border-[#ffb600]"
-                : "bg-[#161b26] border-white/10 hover:border-white/25"
+                ? "bg-[#ffb600]/15 border-[#ffb600]"
+                : "bg-[#141821] border-white/10 hover:border-white/20"
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#ffb600]">
                 PERMANENT VIP TIER
               </span>
-              {selectedPlan === "permanent_100" && <CheckCircle2 size={15} className="text-[#ffb600]" />}
+              {selectedPlan === "permanent_100" && <CheckCircle2 size={16} className="text-[#ffb600]" />}
             </div>
             <div className="text-2xl font-mono font-extrabold text-white mt-1">
               $100 <small className="text-xs text-[#9aa4b5] font-normal">one-time</small>
             </div>
-            <p className="text-[11px] text-[#b4bccb] mt-1.5 leading-relaxed">
-              Lifetime Full Access + Copy Trading on Signals + 1-on-1 Live Mentorship + $500 Exness Account Management.
+            <p className="text-[11px] text-[#b4bccb] mt-2 leading-relaxed">
+              Lifetime Full Access + Signal Copy Trading + 1-on-1 Mentorship + $500 Account Management.
             </p>
           </button>
         </div>
@@ -617,37 +649,37 @@ export function MoolreCheckoutModal({
             <button
               type="button"
               onClick={() => setPaymentMethod("mobile_money")}
-              className={`py-2.5 px-3 rounded-xl border text-xs font-bold cursor-pointer ${
+              className={`py-3 px-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
                 paymentMethod === "mobile_money"
                   ? "bg-[#ffb600] text-black border-[#ffb600]"
-                  : "bg-[#161b26] text-white border-white/10"
+                  : "bg-[#141821] text-white border-white/10 hover:border-white/20"
               }`}
             >
-              Moolre Mobile Money Prompt
+              Mobile Money Prompt
             </button>
             <button
               type="button"
               onClick={() => setPaymentMethod("moolre_link")}
-              className={`py-2.5 px-3 rounded-xl border text-xs font-bold cursor-pointer ${
+              className={`py-3 px-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
                 paymentMethod === "moolre_link"
                   ? "bg-[#ffb600] text-black border-[#ffb600]"
-                  : "bg-[#161b26] text-white border-white/10"
+                  : "bg-[#141821] text-white border-white/10 hover:border-white/20"
               }`}
             >
-              Moolre Hosted Checkout Link
+              Hosted Checkout Link
             </button>
           </div>
 
           {paymentMethod === "mobile_money" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
                   Mobile Money Network
                 </label>
                 <select
                   value={network}
                   onChange={(e) => setNetwork(e.target.value as "MTN" | "Telecel" | "AT")}
-                  className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                  className="w-full bg-[#141821] border border-white/15 rounded-xl px-3.5 py-3 text-white text-xs font-mono focus:border-[#ffb600] focus:outline-none"
                 >
                   <option value="MTN">MTN Mobile Money</option>
                   <option value="Telecel">Telecel Cash</option>
@@ -655,7 +687,7 @@ export function MoolreCheckoutModal({
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#9aa4b5] mb-1.5">
                   Mobile Money Number *
                 </label>
                 <input
@@ -664,15 +696,15 @@ export function MoolreCheckoutModal({
                   value={payerPhone}
                   onChange={(e) => setPayerPhone(e.target.value)}
                   placeholder="e.g. 024 000 0000"
-                  className="w-full bg-[#181c26] border border-white/15 rounded-xl px-3.5 py-2.5 text-white text-xs font-mono"
+                  className="w-full bg-[#141821] border border-white/15 rounded-xl px-3.5 py-3 text-white text-xs font-mono focus:border-[#ffb600] focus:outline-none"
                 />
               </div>
             </div>
           )}
 
-          <div className="p-3.5 rounded-xl bg-[#161b26] border border-white/10 flex items-center justify-between text-xs">
+          <div className="p-4 rounded-xl bg-[#141821] border border-white/10 flex items-center justify-between text-xs">
             <span className="text-[#9aa4b5]">
-              Total Due ({selectedPlan === "permanent_100" ? "Permanent VIP Access" : "30-Day Full Access"}):
+              Total Due ({selectedPlan === "permanent_100" ? "Permanent VIP Access" : "Monthly Access"}):
             </span>
             <strong className="text-sm font-mono font-extrabold text-[#ffb600]">
               ${amountUsd}.00 USD (≈ GHS {amountGhs.toLocaleString()})
@@ -681,14 +713,14 @@ export function MoolreCheckoutModal({
 
           {feedback && (
             <div
-              className={`p-3.5 rounded-xl border text-xs flex flex-col gap-2 ${
+              className={`p-4 rounded-xl border text-xs flex flex-col gap-2.5 ${
                 feedback.success
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                  : "bg-red-500/10 border-red-500/30 text-red-300"
+                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                  : "bg-red-500/15 border-red-500/40 text-red-300"
               }`}
             >
-              <div className="flex items-start gap-2">
-                <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-[#ffb600]" />
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-[#ffb600]" />
                 <span>{feedback.message}</span>
               </div>
               {feedback.paymentUrl && (
@@ -704,18 +736,18 @@ export function MoolreCheckoutModal({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-[#9aa4b5] hover:text-white cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-[#9aa4b5] hover:text-white cursor-pointer transition"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={processing}
-              className="px-6 py-3 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+              className="px-6 py-3 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 transition"
             >
               {processing
                 ? "Processing via Moolre..."
@@ -733,12 +765,18 @@ function SubscriptionGateNotice({
   featureTitle,
   featureDescription,
   requiredPlan = "monthly_20",
+  defaultPlan,
 }: {
   featureTitle: string;
   featureDescription: string;
   requiredPlan?: "monthly_20" | "permanent_100";
+  defaultPlan?: string;
 }) {
   const [showCheckout, setShowCheckout] = useState(false);
+  const effectivePlan: "monthly_20" | "permanent_100" =
+    requiredPlan === "permanent_100" || defaultPlan === "permanent_100"
+      ? "permanent_100"
+      : "monthly_20";
 
   return (
     <div className="p-6 sm:p-7 rounded-2xl bg-gradient-to-b from-[#1c2029] to-[#12151b] border-2 border-[#ffb600]/40 shadow-2xl my-6">
@@ -749,7 +787,7 @@ function SubscriptionGateNotice({
           </span>
           <div>
             <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#ffb600] bg-[#ffb600]/10 px-2.5 py-0.5 rounded">
-              {requiredPlan === "permanent_100"
+              {effectivePlan === "permanent_100"
                 ? "$100 PERMANENT VIP ACCESS REQUIRED"
                 : "1-MONTH FREE TRIAL EXPIRED · MOOLRE SUBSCRIPTION REQUIRED"}
             </span>
@@ -761,7 +799,7 @@ function SubscriptionGateNotice({
           onClick={() => setShowCheckout(true)}
           className="px-5 py-2.5 rounded-full bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs uppercase tracking-wider transition cursor-pointer shrink-0"
         >
-          {requiredPlan === "permanent_100"
+          {effectivePlan === "permanent_100"
             ? "Unlock $100 Permanent VIP via Moolre"
             : "Upgrade ($20/mo or $100 VIP) via Moolre"}
         </button>
@@ -769,7 +807,7 @@ function SubscriptionGateNotice({
       <p className="text-xs sm:text-sm text-[#9ea8b8] mt-3 leading-relaxed">{featureDescription}</p>
       {showCheckout && (
         <MoolreCheckoutModal
-          initialPlan={requiredPlan}
+          initialPlan={effectivePlan}
           onClose={() => setShowCheckout(false)}
         />
       )}
@@ -994,7 +1032,7 @@ export function PortalLayout() {
   // Load client notifications & audit log alerts pertaining to this client
   useEffect(() => {
     const targetEmail = admin ? "ALL" : student.email;
-    void fetchClientNotificationsFromDb(targetEmail, student.exnessId).then(setNotifications);
+    void fetchClientNotificationsFromDb(targetEmail).then(setNotifications);
   }, [admin, student.email, student.exnessId, syncTick]);
 
   // Live Market Price Monitor: checks active Admin signals against real market feed for TP1-TP5 & SL hits
@@ -1005,7 +1043,7 @@ export function PortalLayout() {
       await evaluateSignalsAgainstMarketPrices();
       if (!mounted) return;
       const targetEmail = admin ? "ALL" : student.email;
-      const list = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+      const list = await fetchClientNotificationsFromDb(targetEmail);
       if (mounted) setNotifications(list);
     };
     void checkPrices();
@@ -1035,16 +1073,16 @@ export function PortalLayout() {
 
   async function handleMarkAllRead() {
     const targetEmail = admin ? "ALL" : student.email;
-    await markAllNotificationsReadInDb(targetEmail, student.exnessId);
-    const updated = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+    await markAllNotificationsReadInDb(targetEmail);
+    const updated = await fetchClientNotificationsFromDb(targetEmail);
     setNotifications(updated);
   }
 
   async function handleNotificationClick(item: ClientNotificationItem) {
     if (!item.isRead) {
-      await markNotificationReadInDb(item.id);
+      await markNotificationReadInDb(item.id, student.email);
       const targetEmail = admin ? "ALL" : student.email;
-      const updated = await fetchClientNotificationsFromDb(targetEmail, student.exnessId);
+      const updated = await fetchClientNotificationsFromDb(targetEmail);
       setNotifications(updated);
     }
     setBellOpen(false);
@@ -1063,7 +1101,7 @@ export function PortalLayout() {
         host.includes("candlesticksacademy.online") ||
         host.includes("candlesticks.online")
       ) {
-        window.location.href = getHomePageUrl("/login");
+        window.location.href = "/login";
         return;
       }
     }
@@ -1955,7 +1993,7 @@ export function DashboardPage() {
                   </Badge>
                   <Badge
                     tone={
-                      latestSignal.status === "ALL TPs HIT" || latestSignal.status === "HIT TP"
+                      latestSignal.status === "ALL TPS HIT" || latestSignal.status === "ALL TP HIT" || latestSignal.status === "HIT TP"
                         ? "green"
                         : latestSignal.status === "PARTIAL TP"
                         ? "yellow"
@@ -3764,8 +3802,8 @@ export function ProgressPage() {
       }
 
       // Overlay Student Full Name at Admin-configured vertical position (nameYPercent)
-      const nameY = (certTemplate.nameYPercent / 100) * canvas.height;
-      const scaledFontSize = Math.round((certTemplate.fontSizePx || 38) * 1.65);
+      const nameY = ((certTemplate.nameYPercent ?? 50) / 100) * canvas.height;
+      const scaledFontSize = Math.round((certTemplate.fontSizePx ?? 38) * 1.65);
       ctx.fillStyle = certTemplate.fontColor || "#ffb600";
       ctx.font = `bold ${scaledFontSize}px ${
         certTemplate.fontFamily === "serif"
@@ -4031,13 +4069,13 @@ export function ProgressPage() {
               <div
                 className="absolute left-0 right-0 px-6 text-center pointer-events-none"
                 style={{
-                  top: `${certTemplate.nameYPercent}%`,
+                  top: `${certTemplate.nameYPercent ?? 50}%`,
                   transform: "translateY(-50%)",
                 }}
               >
                 <div
                   style={{
-                    fontSize: `${Math.max(18, Math.round(certTemplate.fontSizePx * 0.78))}px`,
+                    fontSize: `${Math.max(18, Math.round((certTemplate.fontSizePx ?? 38) * 0.78))}px`,
                     color: certTemplate.fontColor || "#ffb600",
                     fontFamily:
                       certTemplate.fontFamily === "serif"
@@ -4605,7 +4643,7 @@ export function TradesPage() {
   const [trades, setTrades] = useState<StudentTradeItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [directionFilter, setDirectionFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "WIN" | "LOSS">("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "PARTIAL TP" | "WIN" | "LOSS">("ALL");
   const [sourceFilter, setSourceFilter] = useState<"ALL" | "EXNESS_SYNC" | "SIGNAL_COPY" | "MANUAL">("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const [syncingExness, setSyncingExness] = useState(false);
@@ -4619,7 +4657,7 @@ export function TradesPage() {
   const [openPrice, setOpenPrice] = useState("2340.00");
   const [closePrice, setClosePrice] = useState("2355.00");
   const [pnlUsd, setPnlUsd] = useState("150.00");
-  const [tradeStatus, setTradeStatus] = useState<"WIN" | "LOSS" | "OPEN">("WIN");
+  const [tradeStatus, setTradeStatus] = useState<"WIN" | "LOSS" | "OPEN" | "PARTIAL TP">("WIN");
 
   async function loadTrades() {
     const list = await fetchStudentTradesFromDb(student.email, student.exnessId);
@@ -5338,7 +5376,8 @@ export function SignalFeedPage() {
     if (tab === "WINS")
       return (
         s.status === "HIT TP" ||
-        s.status === "ALL TPs HIT" ||
+        s.status === "ALL TPS HIT" ||
+        s.status === "ALL TP HIT" ||
         s.status === "PARTIAL TP"
       );
     return true;
@@ -5591,7 +5630,7 @@ export function SignalFeedPage() {
                     </Badge>
                     <Badge
                       tone={
-                        s.status === "ALL TPs HIT" || s.status === "HIT TP"
+                        s.status === "ALL TPS HIT" || s.status === "ALL TP HIT" || s.status === "HIT TP"
                           ? "green"
                           : s.status === "PARTIAL TP"
                           ? "yellow"
@@ -5775,7 +5814,7 @@ export function SignalDetailPage() {
         <div className="flex items-center gap-3">
           <Badge
             tone={
-              s.status === "ALL TPs HIT" || s.status === "HIT TP"
+              s.status === "ALL TPS HIT" || s.status === "ALL TP HIT" || s.status === "HIT TP"
                 ? "green"
                 : s.status === "HIT SL"
                 ? "red"
@@ -8430,11 +8469,11 @@ export function PaymentsPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                void delete1on1SessionFromDb(item.id).then(() =>
-                                  fetch1on1SessionsFromDb().then(setSessions1on1)
-                                )
-                              }
+                              onClick={async () => {
+                                await delete1on1SessionFromDb(item.id);
+                                const list = await fetch1on1SessionsFromDb();
+                                setSessions1on1(list);
+                              }}
                               className="px-2.5 py-1 rounded bg-red-500/20 text-red-300 text-[10px] font-bold cursor-pointer"
                             >
                               Delete
@@ -8595,15 +8634,14 @@ export function PaymentsPage() {
                         <td>
                           <button
                             type="button"
-                            onClick={() =>
-                              void requestTradingPasswordFromStudentInDb(c).then(async () => {
-                                const list = await fetchSignedContractsFromDb();
-                                setSignedContracts(list);
-                                showNotice(
-                                  `Sent Trading Password request alert to ${c.studentName} for Exness Account #${c.exnessTradingAccountId}!`
-                                );
-                              })
-                            }
+                            onClick={async () => {
+                              await requestTradingPasswordFromStudentInDb(c.id);
+                              const list = await fetchSignedContractsFromDb();
+                              setSignedContracts(list);
+                              showNotice(
+                                `Sent Trading Password request alert to ${c.studentName} for Exness Account #${c.exnessTradingAccountId}!`
+                              );
+                            }}
                             className="px-3 py-1.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs cursor-pointer"
                           >
                             Request Trading Password
@@ -8674,12 +8712,14 @@ export function PaymentsPage() {
                       <td>
                         <select
                           value={m.status}
-                          onChange={(e) =>
-                            void updateMerchClaimStatusInDb(
+                          onChange={async (e) => {
+                            updateMerchClaimStatusInDb(
                               m.id,
                               e.target.value as "pending" | "dispatched" | "delivered"
-                            ).then(() => fetchMerchClaimsFromDb().then(setMerchClaims))
-                          }
+                            );
+                            const claims = await fetchMerchClaimsFromDb();
+                            setMerchClaims(claims);
+                          }}
                           className="bg-[#141821] border border-white/15 rounded-lg px-2 py-1 text-xs text-white"
                         >
                           <option value="pending">Pending</option>

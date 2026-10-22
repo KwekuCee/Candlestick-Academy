@@ -101,12 +101,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           <img
             src={LOGO_ASSETS.markYellow}
             alt="Candlesticks Academy"
+            width={36}
+            height={36}
+            style={{ aspectRatio: "1538 / 1173" }}
+            decoding="async"
             className={`brand-logo-dark-img ${markHeightClass} w-auto object-contain block`}
             draggable={false}
           />
           <img
             src={LOGO_ASSETS.markLight}
             alt="Candlesticks Academy"
+            width={36}
+            height={36}
+            style={{ aspectRatio: "1538 / 1173" }}
+            decoding="async"
             className={`brand-logo-light-img ${markHeightClass} w-auto object-contain hidden`}
             draggable={false}
           />
@@ -116,12 +124,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           <img
             src={LOGO_ASSETS.fullDark}
             alt="Candlesticks Academy"
+            width={173}
+            height={36}
+            style={{ aspectRatio: "1839 / 382" }}
+            decoding="async"
             className={`brand-logo-dark-img ${fullHeightClass} w-auto object-contain block`}
             draggable={false}
           />
           <img
             src={LOGO_ASSETS.fullLight}
             alt="Candlesticks Academy"
+            width={173}
+            height={36}
+            style={{ aspectRatio: "1839 / 382" }}
+            decoding="async"
             className={`brand-logo-light-img ${fullHeightClass} w-auto object-contain hidden`}
             draggable={false}
           />
@@ -133,12 +149,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
             <img
               src={LOGO_ASSETS.markYellow}
               alt="Candlesticks Academy"
+              width={36}
+              height={36}
+              style={{ aspectRatio: "1538 / 1173" }}
+              decoding="async"
               className={`brand-logo-dark-img ${markHeightClass} w-auto object-contain block`}
               draggable={false}
             />
             <img
               src={LOGO_ASSETS.markLight}
               alt="Candlesticks Academy"
+              width={36}
+              height={36}
+              style={{ aspectRatio: "1538 / 1173" }}
+              decoding="async"
               className={`brand-logo-light-img ${markHeightClass} w-auto object-contain hidden`}
               draggable={false}
             />
@@ -149,12 +173,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
             <img
               src={LOGO_ASSETS.fullDark}
               alt="Candlesticks Academy"
+              width={173}
+              height={36}
+              style={{ aspectRatio: "1839 / 382" }}
+              decoding="async"
               className={`brand-logo-dark-img ${fullHeightClass} w-auto object-contain block`}
               draggable={false}
             />
             <img
               src={LOGO_ASSETS.fullLight}
               alt="Candlesticks Academy"
+              width={173}
+              height={36}
+              style={{ aspectRatio: "1839 / 382" }}
+              decoding="async"
               className={`brand-logo-light-img ${fullHeightClass} w-auto object-contain hidden`}
               draggable={false}
             />
