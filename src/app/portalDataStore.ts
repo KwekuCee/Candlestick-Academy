@@ -4910,3 +4910,112 @@ export function updateMerchClaimStatus(
   emitPortalUpdate();
 }
 
+// ============================================================================
+// SEO, GOOGLE ANALYTICS & SEARCH CONSOLE CONFIG STORE
+// ============================================================================
+
+export const LS_SEO_ANALYTICS_KEY = "candlesticks_seo_analytics_config";
+
+export interface SeoAnalyticsConfig {
+  googleAnalyticsId: string;
+  gaMeasurementId?: string;
+  googleSearchConsoleVerification: string;
+  gscVerificationTag?: string;
+  siteTitle: string;
+  metaDescription: string;
+  keywords?: string;
+  enableGa?: boolean;
+  enableAiSearchIndexing: boolean;
+  enableAiSearchCrawlers?: boolean;
+  enableSitemapIndexing: boolean;
+  lastUpdated: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_SEO_ANALYTICS_CONFIG: SeoAnalyticsConfig = {
+  googleAnalyticsId: "G-7R5Y1KZBEP",
+  gaMeasurementId: "G-7R5Y1KZBEP",
+  googleSearchConsoleVerification: "google-site-verification=CandlesticksAcademy-Verification-Token-2026",
+  gscVerificationTag: "google-site-verification=CandlesticksAcademy-Verification-Token-2026",
+  siteTitle: "Candlesticks Academy | Institutional Forex Mentorship & Signals",
+  metaDescription:
+    "Official institutional Forex academy led by Pastor Mike. Master order flow, liquidity, London & NY sessions, and receive real-time institutional signals with Exness broker integration.",
+  keywords: "Forex academy, Candlesticks Academy, Pastor Mike, Exness broker, Gold trading signals, XAUUSD, institutional order flow, smart money concepts, forex mentorship Ghana Africa",
+  enableGa: true,
+  enableAiSearchIndexing: true,
+  enableAiSearchCrawlers: true,
+  enableSitemapIndexing: true,
+  lastUpdated: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+export function getStoredSeoAnalyticsConfig(): SeoAnalyticsConfig {
+  try {
+    const raw = localStorage.getItem(LS_SEO_ANALYTICS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const merged = { ...DEFAULT_SEO_ANALYTICS_CONFIG, ...parsed };
+      // Sync aliases
+      merged.gaMeasurementId = merged.gaMeasurementId || merged.googleAnalyticsId;
+      merged.googleAnalyticsId = merged.gaMeasurementId;
+      merged.gscVerificationTag = merged.gscVerificationTag || merged.googleSearchConsoleVerification;
+      merged.googleSearchConsoleVerification = merged.gscVerificationTag;
+      merged.updatedAt = merged.updatedAt || merged.lastUpdated;
+      if (merged.enableAiSearchCrawlers === undefined) {
+        merged.enableAiSearchCrawlers = merged.enableAiSearchIndexing;
+      }
+      return merged;
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_SEO_ANALYTICS_CONFIG;
+}
+
+export function saveStoredSeoAnalyticsConfig(
+  updates: Partial<SeoAnalyticsConfig>
+): SeoAnalyticsConfig {
+  const current = getStoredSeoAnalyticsConfig();
+  const next: SeoAnalyticsConfig = {
+    ...current,
+    ...updates,
+    lastUpdated: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Sync alias pairs
+  if (next.gaMeasurementId) next.googleAnalyticsId = next.gaMeasurementId;
+  else if (next.googleAnalyticsId) next.gaMeasurementId = next.googleAnalyticsId;
+
+  if (next.gscVerificationTag) next.googleSearchConsoleVerification = next.gscVerificationTag;
+  else if (next.googleSearchConsoleVerification) next.gscVerificationTag = next.googleSearchConsoleVerification;
+
+  try {
+    localStorage.setItem(LS_SEO_ANALYTICS_KEY, JSON.stringify(next));
+
+    // Update live DOM tags if present
+    if (typeof document !== "undefined") {
+      const gsc = next.gscVerificationTag || next.googleSearchConsoleVerification;
+      if (gsc) {
+        const metaTag = document.getElementById("gsc-meta-tag");
+        if (metaTag) {
+          metaTag.setAttribute("content", gsc);
+        }
+      }
+      if (next.siteTitle && document.title) {
+        document.title = next.siteTitle;
+      }
+    }
+
+    emitPortalUpdate();
+  } catch {
+    // ignore
+  }
+  return next;
+}
+
+export const getSeoAnalyticsConfig = getStoredSeoAnalyticsConfig;
+export const saveSeoAnalyticsConfig = saveStoredSeoAnalyticsConfig;
+
+
+

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for Admin Live Broadcast Screen Share + Webcam PiP, Moolre Payment Gateway integration with 30-day free trial and $20/month + $100 Permanent VIP tiers, separate 1-on-1 Mentorship and Account Management ($500 deposit + uploaded contract signing) tabs, and Post-Registration First 20 Merch Giveaway popup.",
-  "updatedAt":  "2026-10-21T14:58:44.507294437Z",
+  "summary":  "Implementation plan for clean subdomain routing (candlesticksacademy.online for homepage, student.candlesticksacademy.online for student dashboard, master.candlesticksacademy.online for admin console) with zero URL query clutter, and complete SEO, Schema.org JSON-LD, sitemap, robots, AI search engine indexing (llms.txt), and Google Analytics & Search Console configuration with Admin Settings controls.",
+  "updatedAt":  "2026-10-22T01:18:37.652238945Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

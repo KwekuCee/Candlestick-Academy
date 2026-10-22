@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png', 'ceo.png'],
+        includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png', 'ceo.png', 'robots.txt', 'sitemap.xml', 'llms.txt'],
         manifest: {
           id: '/',
           name: 'Candlesticks Academy',

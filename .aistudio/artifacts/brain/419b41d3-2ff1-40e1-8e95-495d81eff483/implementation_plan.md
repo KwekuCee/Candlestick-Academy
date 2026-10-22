@@ -1,46 +1,70 @@
-# Candlesticks Academy — Broadcast PiP, Moolre Payments, VIP Tiers & Merch Giveaway Plan
+# Implementation Plan: Clean Subdomain Routing & Comprehensive Search Engine Optimization (SEO)
 
-## 1. Admin Live Broadcast Studio & Layout Updates
-- **Screen Share Selection + Bottom-Left Webcam PiP (`AdminStudioPages.tsx`)**:
-  - Enhance the **Share Screen & Go Live** flow so clicking **Share Screen** requests screen selection (`navigator.mediaDevices.getDisplayMedia`) while simultaneously capturing the instructor's webcam (`navigator.mediaDevices.getUserMedia`).
-  - Render the shared screen boldly across the primary broadcast canvas and composite/overlay the webcam feed as a clean, square Picture-in-Picture (PiP) frame anchored in the **bottom-left corner** of the broadcast stage.
-  - Provide an interactive in-app Screen & Window Source Selector fallback when running inside a restricted preview iframe so screen sharing + bottom-left webcam PiP works seamlessly in both preview and deployed environments.
-  - Preserve the existing **RTMP Server / Stream Key (OBS Studio)** configuration intact.
-- **Live Session Chat & Moderation Card Alignment**:
-  - Update the two-column grid in the Admin Live Broadcast Studio (`items-stretch` with flex-grow message viewport) so the **Live Session Chat & Moderation** card on the right stretches down to align flush with the bottom edge of the **Edit Scheduled Live** card on the left.
+## Overview
+This plan addresses two core requirements:
+1. **Clean Subdomain Switching Without Query Strings**:
+   - Homepage: `https://candlesticksacademy.online` (or `www.candlesticksacademy.online`). When navigating back to the homepage from master or student, it displays clean `candlesticksacademy.online`.
+   - Master Admin: `https://master.candlesticksacademy.online/admin`. Remove the long SSO base64 string (`?ca_sso=...`) that was showing in the URL bar, and replace it with clean, seamless root-domain cookie and broadcast authentication.
+   - Student Dashboard: `https://student.candlesticksacademy.online/dashboard`.
+2. **Comprehensive SEO, Google Search Insights, AI Search Engine Optimization, and Analytics**:
+   - Structured JSON-LD metadata (`EducationalOrganization`, `Course`, `FinancialService`, `WebSite`, `FAQPage`, `BreadcrumbList`) for Google rich snippets.
+   - OpenGraph & Twitter Cards with high-resolution brand share previews.
+   - Dynamic canonical links and meta tags per page.
+   - Complete `sitemap.xml`, `robots.txt` (with allow rules for Googlebot, Bingbot, and AI search crawlers like GPTBot, ClaudeBot, PerplexityBot, Google-Extended), and `llms.txt` for AI search engines.
+   - Google Analytics 4 (`gtag.js`) and Google Search Console verification meta tag integration with interactive Admin Settings so the user can easily update or add their official Measurement ID (`G-XXXXXXXXXX`) and Google Search verification code directly from the Admin Console.
 
-## 2. Moolre Payment Gateway & 3-Tier Access Architecture
-- **Moolre API Integration (`portalDataStore.ts`, `AdminStudioPages.tsx`, `PlatformPages.tsx`)**:
-  - Add a **Moolre Gateway Configuration** panel in Admin Settings where you can configure your Moolre `X-API-USER`, `X-API-PUBKEY`, Moolre Account Number, Currency (`GHS` / `USD`), and exchange rate, alongside environment variable support.
-  - Connect checkout flows to Moolre's Payment Link API (`POST https://api.moolre.com/embed/link`) and Mobile Money Collection API (`POST https://api.moolre.com/open/transact/payment` for MTN, Telecel, AT, and Card/Hosted link) with instant status verification.
-- **1-Month Free Trial & Post-Expiry Restrictions**:
-  - Every newly registered student automatically receives a **30-Day Free Trial** (`trialEndsAt` timestamp) granting full `$20/month` access.
-  - Once the 30-day free trial expires (or if a student is on the unpaid expired state):
-    - **Unlocked**: **Trading Signals** and **Courses (Beginner & Intermediate levels only)**.
-    - **Locked behind Moolre Upgrade**: **Essential** and **Advanced** course levels, **Live Stream**, and **Market Insights**.
-- **Tier 1 — $20/Month Full Access Plan (Updated from $30 to $20)**:
-  - Unlocks all 4 course levels (**Beginner, Intermediate, Essential, Advanced**), **Live Stream**, **Market Insights**, and **Trading Signals**.
-- **Tier 2 — $100 Permanent Access (One-Time VIP Tier)**:
-  - Unlocks permanent lifetime access to all platform features plus:
-    - **Copy Trading** execution on Admin-posted signals.
-    - Two dedicated VIP sidebar tabs in the Student Portal: **1-on-1 Mentorship** and **Account Management**.
+---
 
-## 3. Separate VIP Sidebar Tabs for $100 Permanent Access Members
-- **Tab 1: 1-on-1 Mentorship (`PlatformPages.tsx` & `AdminStudioPages.tsx`)**:
-  - **Admin Scheduling**: In the Admin Dashboard, you can select any `$100 Permanent Access` student and schedule private 1-on-1 mentorship & live trading sessions (date, time, topic, join room/stream link).
-  - **Student 1-on-1 Mentorship Hub**: Displays upcoming scheduled 1-on-1 sessions with the Master Trader, interactive live trading room access, and session notes.
-- **Tab 2: Account Management & Fixed Contract Signing (`PlatformPages.tsx` & `AdminStudioPages.tsx`)**:
-  - **Admin Contract Document Upload**: In the Admin Dashboard, upload a Contract Document (`.txt`, `.pdf`, `.docx`, or pasted text). The system extracts and stores the contract text as a **fixed, non-negotiable agreement**.
-  - **$500 Exness Deposit Verification**: Checks that the student has a confirmed **$500+ deposit** in their Exness account (verified via Exness Partner API sync or Admin confirmation toggle).
-  - **Digital Contract Review & Signature**: Once the $500 deposit is confirmed, the fixed contract unlocks for the student to read the full terms and conditions and append their **digital signature** (typed legal name + drawn/confirmed signature + timestamp).
-  - **Admin Backend Handshake**: Once signed, the Admin Dashboard displays the signed contract record alongside the student's **Exness Trading ID** and a one-click action to request their trading password for account management and profit splitting.
+## Proposed Changes
 
-## 4. First 20 Registrants Merch Giveaway (Post-Registration Popup Modal)
-- **Post-Registration / Onboarding Merch Claim Modal (`OnboardingFlow.tsx` & `PlatformPages.tsx`)**:
-  - Immediately upon completing registration/onboarding (while fewer than 20 claims have been submitted), display a celebratory **First 20 Registrants — Candlesticks & Exness Branded Merch** popup modal featuring T-shirts, Tote bags, and Caps.
-  - Includes the **Merch Delivery Claim Form** capturing:
-    - **Full Name**
-    - **Contact / Phone Number**
-    - **Delivery Location / Address**
-    - **Preferred Time of Delivery**
-  - Tracks remaining spots out of 20 in real time and lists all student merch claims inside the **Admin Dashboard** for delivery fulfillment.
+### 1. Clean Cross-Subdomain Session Sync & Routing (`/src/app/exnessStore.ts`, `/src/app/routes.tsx`)
+- **Fix the Long Query String (`?ca_sso=...`)**:
+  - Replace the visible URL query parameter with clean root-domain cookies (`Domain=.candlesticksacademy.online; Path=/; SameSite=Lax; Secure`).
+  - Use `localStorage` + shared `.candlesticksacademy.online` cookies for persistent session authorization across `master.candlesticksacademy.online`, `student.candlesticksacademy.online`, and `candlesticksacademy.online`.
+  - For any cross-origin fallback, use `window.history.replaceState` immediately before any rendering or URL flash, or use an invisible hash fragment that is stripped instantly, keeping the browser address bar 100% clean (`https://master.candlesticksacademy.online/admin` and `https://student.candlesticksacademy.online/dashboard`).
+- **Domain Mappings**:
+  - Main/Homepage: `candlesticksacademy.online` & `www.candlesticksacademy.online`
+  - Master Admin: `master.candlesticksacademy.online`
+  - Student: `student.candlesticksacademy.online`
+- **Return to Homepage**:
+  - All "Home", "Logo", and "Log out" navigation links on master and student domains navigate cleanly back to `https://candlesticksacademy.online` without any subdomain prefix.
+
+### 2. SEO, Meta Tags & AI Search Optimization
+- **`index.html` & `.figma/make/site.json`**:
+  - Set canonical URL to `https://candlesticksacademy.online`.
+  - Rich OpenGraph tags: `og:title`, `og:description`, `og:image`, `og:url`, `og:site_name`, `og:locale`.
+  - Twitter summary card tags (`twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`).
+  - Google Search Console verification meta tag (`google-site-verification`).
+  - Mobile meta tags and Apple Touch Icon references.
+- **Schema.org Structured Data (`/src/app/seoStructuredData.ts` & injected in `index.html`)**:
+  - `@type: EducationalOrganization` / `FinancialService` for "Candlesticks Academy".
+  - `@type: WebSite` with search potential action.
+  - `@type: Course` schema for Academy course levels (Beginner, Intermediate, Essential, Advanced).
+  - `@type: FAQPage` schema answering top questions for search snippets and AI answer engines.
+- **Search Engine & AI Discovery Files**:
+  - `/public/robots.txt`: Optimized indexing directives allowing Googlebot, Bingbot, Applebot, GPTBot, ClaudeBot, PerplexityBot, and Google-Extended, pointing to `https://candlesticksacademy.online/sitemap.xml`.
+  - `/public/sitemap.xml`: Complete XML sitemap containing all indexable landing and informational routes (`/`, `/courses`, `/lessons`, `/terms`, `/privacy`, `/login`, `/register`).
+  - `/public/llms.txt` & `/public/llms-full.txt`: Concise Markdown knowledge specification describing Candlesticks Academy, Pastor Mike, institutional forex & gold trading tracks, Exness partnership, and live mentorship for AI agents and search engines (ChatGPT Search, Perplexity, Gemini, Claude).
+
+### 3. Google Analytics & Search Console Admin Settings (`/src/app/portalDataStore.ts`, `/src/app/AdminStudioPages.tsx`)
+- Add an **SEO & Search Engine Analytics** card in the Admin Console:
+  - Input field for **Google Analytics 4 Measurement ID** (e.g. `G-XXXXXXXXXX`).
+  - Input field for **Google Search Console Verification Token** (e.g. `google-site-verification=...`).
+  - Input field for **Custom Search Title & Meta Description**.
+  - One-click "Save & Apply Live Tracking" button that immediately initializes Google Analytics `gtag.js` and updates the head tags.
+- In `index.html` / `src/main.tsx`, load Google Analytics dynamically based on the configured ID with no console errors when unconfigured.
+
+---
+
+## Verification Plan
+
+### Automated Tests & Compilation
+- Run `compile_applet` to verify TypeScript and Vite build succeed with zero errors.
+- Run `node` test script to verify `robots.txt`, `sitemap.xml`, and `llms.txt` exist and are valid.
+- Test domain resolution and URL formatting logic for `candlesticksacademy.online`, `student.candlesticksacademy.online`, and `master.candlesticksacademy.online`.
+
+### Manual & Behavioral Verifications
+- Test student login redirect -> verifies clean domain `student.candlesticksacademy.online/dashboard` without URL query string clutter.
+- Test admin login redirect -> verifies clean domain `master.candlesticksacademy.online/admin` without URL query string clutter.
+- Test returning to homepage from master/student -> verifies destination is `https://candlesticksacademy.online`.
+- Inspect head markup for Schema.org JSON-LD, OpenGraph tags, Google Search Console tag, and Google Analytics initialization.

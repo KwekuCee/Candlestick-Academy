@@ -4,8 +4,11 @@
   "icons": {
     "icon": "/favicon-ca05.png"
   },
+  "openGraph": {
+    "image": "/assets/aistudio/CA-02_8e3c67eb.png"
+  },
   "robots": {
-    "index": false
+    "index": true
   },
   "accessibility": {
     "addBypassLinks": false,

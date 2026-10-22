@@ -779,7 +779,7 @@ export async function refreshRosterFromSupabase(): Promise<ExnessStudent[]> {
       .order("registration_date", { ascending: false });
 
     if (!error && Array.isArray(data) && data.length > 0) {
-      const mapped = data.map((r) => {
+      const mapped: ExnessStudent[] = data.map((r) => {
         const student = mapDbRowToStudent(r as Record<string, unknown>);
         const localMatch = existingLocal.find(
           (item) => item.email.toLowerCase() === student.email.toLowerCase()
@@ -876,7 +876,7 @@ export async function syncStudentToSupabase(user: ExnessStudent, password?: stri
     if (user.notifySignals !== undefined) payload.notify_signals = user.notifySignals;
     if (user.notifySessions !== undefined) payload.notify_sessions = user.notifySessions;
     if (user.streakDays !== undefined) payload.streak_days = user.streakDays;
-    if (user.bestStreakDays !== undefined) payload.best_streak_days = user.best_streak_days;
+    if (user.bestStreakDays !== undefined) payload.best_streak_days = user.bestStreakDays;
     if (user.lastActiveDate !== undefined) payload.last_active_date = user.lastActiveDate;
 
     const { error } = await supabase.from("students").upsert(payload, { onConflict: "email" });
@@ -1029,8 +1029,24 @@ export async function registerApprovedTradingAccountInSupabase(params: {
 }
 
 export const MAIN_ACADEMY_DOMAIN = "candlesticksacademy.online";
-export const STUDENT_PORTAL_DOMAIN = "stu.candlesticksacademy.online";
+export const STUDENT_PORTAL_DOMAIN = "student.candlesticksacademy.online";
 export const ADMIN_PORTAL_DOMAIN = "master.candlesticksacademy.online";
+
+export function getHomePageUrl(): string {
+  if (typeof window === "undefined") return "/";
+  const host = window.location.hostname.toLowerCase();
+  if (
+    host.startsWith("master.") ||
+    host.startsWith("student.") ||
+    host.startsWith("stu.")
+  ) {
+    if (host.includes("candlesticks.online") && !host.includes("candlesticksacademy.online")) {
+      return "https://candlesticks.online/";
+    }
+    return "https://candlesticksacademy.online/";
+  }
+  return "/";
+}
 
 const STUDENT_COOKIE_NAME = "ca_student_session";
 const ADMIN_COOKIE_NAME = "ca_admin_session";
@@ -1058,8 +1074,11 @@ function setCrossSubdomainCookie(name: string, value: string, maxAgeSec = 60 * 6
     const isSecure = window.location.protocol === "https:";
     const secureFlag = isSecure ? "; Secure" : "";
     document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
-    if (host.endsWith(MAIN_ACADEMY_DOMAIN)) {
-      document.cookie = `${name}=${encodeURIComponent(value)}; Domain=.${MAIN_ACADEMY_DOMAIN}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
+    if (host.includes("candlesticksacademy.online")) {
+      document.cookie = `${name}=${encodeURIComponent(value)}; Domain=.candlesticksacademy.online; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
+    }
+    if (host.includes("candlesticks.online")) {
+      document.cookie = `${name}=${encodeURIComponent(value)}; Domain=.candlesticks.online; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${secureFlag}`;
     }
   } catch {
     // ignore cookie errors
@@ -1087,11 +1106,9 @@ function getCrossSubdomainCookie(name: string): string | null {
 function clearCrossSubdomainCookie(name: string) {
   if (typeof document === "undefined") return;
   try {
-    const host = window.location.hostname.toLowerCase();
     document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
-    if (host.endsWith(MAIN_ACADEMY_DOMAIN)) {
-      document.cookie = `${name}=; Domain=.${MAIN_ACADEMY_DOMAIN}; Path=/; Max-Age=0; SameSite=Lax`;
-    }
+    document.cookie = `${name}=; Domain=.candlesticksacademy.online; Path=/; Max-Age=0; SameSite=Lax`;
+    document.cookie = `${name}=; Domain=.candlesticks.online; Path=/; Max-Age=0; SameSite=Lax`;
   } catch {
     // ignore
   }
@@ -1253,19 +1270,18 @@ export function setMasterAdminAuthenticated(authenticated: boolean) {
 }
 
 export function buildRolePortalUrl(role: "student" | "admin", targetPath?: string): string {
-  const targetDomain = role === "admin" ? ADMIN_PORTAL_DOMAIN : STUDENT_PORTAL_DOMAIN;
+  const currentHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+  const isAltCandlesticksDomain =
+    currentHost.includes("candlesticks.online") && !currentHost.includes("candlesticksacademy.online");
+  const baseDomain = isAltCandlesticksDomain ? "candlesticks.online" : "candlesticksacademy.online";
+  const targetDomain = role === "admin" ? `master.${baseDomain}` : `student.${baseDomain}`;
   const defaultPath = role === "admin" ? "/admin" : "/dashboard";
   const cleanPath = (targetPath || defaultPath).startsWith("/")
     ? targetPath || defaultPath
     : `/${targetPath || defaultPath}`;
 
-  const payload =
-    role === "admin"
-      ? { role: "admin" as const, ts: Date.now() }
-      : { role: "student" as const, student: getStoredCurrentUser(), ts: Date.now() };
-  const ssoToken = encodeBase64Utf8(JSON.stringify(payload));
-  const sep = cleanPath.includes("?") ? "&" : "?";
-  return `https://${targetDomain}${cleanPath}${ssoToken ? `${sep}ca_sso=${encodeURIComponent(ssoToken)}` : ""}`;
+  // Completely clean URL with zero query string tokens
+  return `https://${targetDomain}${cleanPath}`;
 }
 
 export function redirectToRolePortal(
@@ -1284,10 +1300,16 @@ export function redirectToRolePortal(
   }
 
   const currentHost = window.location.hostname.toLowerCase();
-  const targetDomain = role === "admin" ? ADMIN_PORTAL_DOMAIN : STUDENT_PORTAL_DOMAIN;
+  const isAltCandlesticksDomain =
+    currentHost.includes("candlesticks.online") && !currentHost.includes("candlesticksacademy.online");
+  const baseDomain = isAltCandlesticksDomain ? "candlesticks.online" : "candlesticksacademy.online";
+  const targetDomain = role === "admin" ? `master.${baseDomain}` : `student.${baseDomain}`;
 
-  // If already on the exact target domain (stu.candlesticksacademy.online or master.candlesticksacademy.online), navigate directly in-app
-  if (currentHost === targetDomain) {
+  // If already on the exact target domain (student.candlesticksacademy.online or master.candlesticksacademy.online), navigate cleanly in-app
+  if (
+    currentHost === targetDomain ||
+    (role === "student" && currentHost === `stu.${baseDomain}`)
+  ) {
     if (fallbackNavigate) {
       fallbackNavigate(cleanPath);
     } else {
@@ -1296,7 +1318,7 @@ export function redirectToRolePortal(
     return;
   }
 
-  // Direct student to stu.candlesticksacademy.online and admin to master.candlesticksacademy.online
+  // Direct student to student.candlesticksacademy.online and admin to master.candlesticksacademy.online (clean URL)
   const destinationUrl = buildRolePortalUrl(role, cleanPath);
   window.location.assign(destinationUrl);
 }

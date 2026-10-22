@@ -74,9 +74,23 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       ? "h-9"
       : "h-8";
 
-  const handleHomeClick = () => {
+  const handleHomeClick = (e: React.MouseEvent) => {
     if (to === "/" || href === "#top") {
       saveActiveRoute("/");
+      if (typeof window !== "undefined") {
+        const host = window.location.hostname.toLowerCase();
+        if (
+          host.startsWith("master.") ||
+          host.startsWith("student.") ||
+          host.startsWith("stu.")
+        ) {
+          e.preventDefault();
+          const targetHome = host.includes("candlesticks.online") && !host.includes("candlesticksacademy.online")
+            ? "https://candlesticks.online/"
+            : "https://candlesticksacademy.online/";
+          window.location.assign(targetHome);
+        }
+      }
     }
   };
 

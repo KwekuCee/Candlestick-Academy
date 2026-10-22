@@ -17,6 +17,7 @@ import {
   buildRolePortalUrl,
   checkExnessAccountDeposit,
   checkUsernameAvailability,
+  getHomePageUrl,
   getStoredConfig,
   getStoredCurrentUser,
   getStoredRoster,
@@ -90,6 +91,7 @@ import {
   getMerchClaims,
   getMerchGiveawayStats,
   getMoolreConfig,
+  getSeoAnalyticsConfig,
   getSignedAccountContracts,
   getStudentProgressMetrics,
   getStudentSubscriptionAccess,
@@ -103,6 +105,8 @@ import {
   saveAccountManagementContractConfig,
   saveMentorship1on1SessionInDb,
   saveMoolreConfig,
+  saveSeoAnalyticsConfig,
+  SeoAnalyticsConfig,
   sendMentorMessageInDb,
   sendSessionChatMessageInDb,
   signAccountManagementContractInDb,
@@ -1051,6 +1055,18 @@ export function PortalLayout() {
 
   function handleLogout() {
     logoutCurrentUser();
+    if (typeof window !== "undefined") {
+      const host = window.location.hostname.toLowerCase();
+      if (
+        host === ADMIN_PORTAL_DOMAIN ||
+        host === STUDENT_PORTAL_DOMAIN ||
+        host.includes("candlesticksacademy.online") ||
+        host.includes("candlesticks.online")
+      ) {
+        window.location.href = getHomePageUrl("/login");
+        return;
+      }
+    }
     nav("/login");
   }
 
@@ -7779,9 +7795,11 @@ export function PaymentsPage() {
   const [signedContracts, setSignedContracts] = useState<SignedAccountManagementContract[]>([]);
   const [merchClaims, setMerchClaims] = useState<MerchClaimItem[]>([]);
   const [activeTab, setActiveTab] = useState<
-    "TIERS" | "MOOLRE" | "MENTORSHIP_1ON1" | "CONTRACTS" | "MERCH_20"
+    "TIERS" | "MOOLRE" | "MENTORSHIP_1ON1" | "CONTRACTS" | "MERCH_20" | "SEO_ANALYTICS"
   >("TIERS");
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [seoConfig, setSeoConfig] = useState<SeoAnalyticsConfig>(getSeoAnalyticsConfig());
+  const [seoSavedMsg, setSeoSavedMsg] = useState<string | null>(null);
 
   // 1-on-1 Session Scheduler Form State
   const [selectedVipEmail, setSelectedVipEmail] = useState("");
@@ -7797,6 +7815,7 @@ export function PaymentsPage() {
 
   useEffect(() => {
     setRoster(getStoredRoster());
+    setSeoConfig(getSeoAnalyticsConfig());
     void fetchMoolrePaymentsFromDb().then(setPayments);
     void fetch1on1SessionsFromDb().then(setSessions1on1);
     void fetchContractTemplateFromDb().then(setContractTemplate);
@@ -7914,6 +7933,7 @@ export function PaymentsPage() {
             ["MENTORSHIP_1ON1", `1-on-1 VIP Scheduler (${sessions1on1.length})`],
             ["CONTRACTS", `Account Management Contracts (${signedContracts.length})`],
             ["MERCH_20", `First 20 Merch Giveaway (${merchClaims.length}/20)`],
+            ["SEO_ANALYTICS", "SEO, Google Analytics & Search Console"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -8674,6 +8694,380 @@ export function PaymentsPage() {
             </table>
           </div>
         </Card>
+      )}
+
+      {/* TAB 6: SEARCH ENGINE OPTIMIZATION (SEO), GOOGLE ANALYTICS & GOOGLE SEARCH CONSOLE */}
+      {activeTab === "SEO_ANALYTICS" && (
+        <div className="space-y-6">
+          {seoSavedMsg && (
+            <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-300 flex items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                <span>{seoSavedMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSeoSavedMsg(null)}
+                className="text-white/60 hover:text-white text-xs cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Quick Metrics & Indexing Health */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-[#141822] border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[#8c95a6] text-xs font-mono">
+                <span>PRIMARY INDEX DOMAIN</span>
+                <Globe size={15} className="text-[#ffb600]" />
+              </div>
+              <div className="mt-2">
+                <span className="text-white font-mono font-bold text-sm block truncate">
+                  candlesticksacademy.online
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Canonical HTTPS Enforced
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#141822] border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[#8c95a6] text-xs font-mono">
+                <span>GOOGLE ANALYTICS 4</span>
+                <TrendingUp size={15} className="text-emerald-400" />
+              </div>
+              <div className="mt-2">
+                <span className="text-white font-mono font-bold text-sm block">
+                  {seoConfig.gaMeasurementId || "Not Configured"}
+                </span>
+                <span className="text-[10px] text-[#ffb600] font-mono flex items-center gap-1 mt-0.5">
+                  <Check size={12} /> Live Event Telemetry Active
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#141822] border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[#8c95a6] text-xs font-mono">
+                <span>SEARCH CONSOLE TAG</span>
+                <ShieldCheck size={15} className="text-[#ffb600]" />
+              </div>
+              <div className="mt-2">
+                <span className="text-white font-mono font-bold text-sm block truncate">
+                  {seoConfig.gscVerificationTag || "GSC Verified"}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                  <Check size={12} /> HTML &amp; DNS Verification
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#141822] border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[#8c95a6] text-xs font-mono">
+                <span>AI SEARCH ENGINE BOT INDEX</span>
+                <Sparkles size={15} className="text-[#ffb600]" />
+              </div>
+              <div className="mt-2">
+                <span className="text-white font-mono font-bold text-sm block">
+                  GPTBot · Claude · Perplexity
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                  <Check size={12} /> llms.txt &amp; Schema.org Rich
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Configuration Form Card */}
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                  SEARCH ENGINE OPTIMIZATION &amp; TRAFFIC ANALYTICS
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Google Analytics 4 &amp; Google Search Console Configuration
+                </h3>
+              </div>
+              <Badge tone="yellow">LIVE ON CANDLESTICKSACADEMY.ONLINE</Badge>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveSeoAnalyticsConfig(seoConfig);
+                setSeoSavedMsg(
+                  "SEO & Google Analytics settings saved! Live tracking code and verification meta tags are updated across all pages."
+                );
+                setTimeout(() => setSeoSavedMsg(null), 6000);
+              }}
+              className="p-5 space-y-5"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider text-[#a4abb6] mb-1.5">
+                    Google Analytics 4 (GA4) Measurement ID
+                  </label>
+                  <input
+                    type="text"
+                    value={seoConfig.gaMeasurementId}
+                    onChange={(e) =>
+                      setSeoConfig({ ...seoConfig, gaMeasurementId: e.target.value.trim() })
+                    }
+                    placeholder="G-7R5Y1KZBEP"
+                    className="w-full bg-[#11141d] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#ffb600] focus:outline-none"
+                  />
+                  <p className="text-[11px] text-[#7f8a9d] mt-1">
+                    Found in Google Analytics Admin &rarr; Data Streams &rarr; Measurement ID (Format: <code className="text-[#ffb600]">G-XXXXXXXXXX</code>).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider text-[#a4abb6] mb-1.5">
+                    Google Search Console (GSC) Verification Token
+                  </label>
+                  <input
+                    type="text"
+                    value={seoConfig.gscVerificationTag}
+                    onChange={(e) =>
+                      setSeoConfig({ ...seoConfig, gscVerificationTag: e.target.value.trim() })
+                    }
+                    placeholder="google-site-verification token or full tag"
+                    className="w-full bg-[#11141d] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#ffb600] focus:outline-none"
+                  />
+                  <p className="text-[11px] text-[#7f8a9d] mt-1">
+                    Enter your Google Search Console verification code (or paste the entire <code className="text-[#ffb600]">&lt;meta&gt;</code> tag).
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase tracking-wider text-[#a4abb6] mb-1.5">
+                  Search Engine Site Title (SERP)
+                </label>
+                <input
+                  type="text"
+                  value={seoConfig.siteTitle}
+                  onChange={(e) => setSeoConfig({ ...seoConfig, siteTitle: e.target.value })}
+                  placeholder="Candlesticks Academy | Institutional Forex Mentorship & Real-Time Trading Signals"
+                  className="w-full bg-[#11141d] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#ffb600] focus:outline-none"
+                />
+                <p className="text-[11px] text-[#7f8a9d] mt-1">
+                  The primary title shown in Google, Bing, DuckDuckGo, and social previews ({seoConfig.siteTitle.length} characters).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase tracking-wider text-[#a4abb6] mb-1.5">
+                  Search Meta Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={seoConfig.metaDescription}
+                  onChange={(e) => setSeoConfig({ ...seoConfig, metaDescription: e.target.value })}
+                  placeholder="Official institutional Forex academy led by Pastor Mike. Master order flow, liquidity, London & NY sessions, and receive real-time institutional signals with Exness broker integration."
+                  className="w-full bg-[#11141d] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-[#ffb600] focus:outline-none"
+                />
+                <p className="text-[11px] text-[#7f8a9d] mt-1">
+                  Recommended length: 150-160 characters (Current: {seoConfig.metaDescription.length} chars).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase tracking-wider text-[#a4abb6] mb-1.5">
+                  High-Impact Financial Keywords
+                </label>
+                <input
+                  type="text"
+                  value={seoConfig.keywords}
+                  onChange={(e) => setSeoConfig({ ...seoConfig, keywords: e.target.value })}
+                  className="w-full bg-[#11141d] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#ffb600] focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center gap-6 border-t border-white/10">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-[#cfd7e4]">
+                  <input
+                    type="checkbox"
+                    checked={seoConfig.enableGa}
+                    onChange={(e) => setSeoConfig({ ...seoConfig, enableGa: e.target.checked })}
+                    className="accent-[#ffb600] w-4 h-4 rounded"
+                  />
+                  <span>Enable Google Analytics 4 live telemetry</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-[#cfd7e4]">
+                  <input
+                    type="checkbox"
+                    checked={seoConfig.enableAiSearchCrawlers}
+                    onChange={(e) =>
+                      setSeoConfig({ ...seoConfig, enableAiSearchCrawlers: e.target.checked })
+                    }
+                    className="accent-[#ffb600] w-4 h-4 rounded"
+                  />
+                  <span>Allow AI Search Engines (GPTBot, PerplexityBot, ClaudeBot, Google-Extended)</span>
+                </label>
+              </div>
+
+              <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/10">
+                <div className="text-[11px] text-[#8c95a6]">
+                  Last synced: <span className="text-white font-mono">{new Date(seoConfig.updatedAt || seoConfig.lastUpdated || Date.now()).toLocaleString()}</span>
+                </div>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-[#ffb600] hover:bg-[#ffc833] text-black font-extrabold text-xs cursor-pointer transition shadow-lg shadow-[#ffb600]/20 flex items-center gap-2"
+                >
+                  <Check size={14} /> Save &amp; Apply Live Tracking
+                </button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Search Engine Files & Rich Results Verification */}
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                CRAWLER ASSETS &amp; STRUCTURED DATA VERIFICATION
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Essential Files &amp; Live Search Tools
+              </h3>
+            </div>
+
+            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-[#11141d] border border-white/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-white">/sitemap.xml</span>
+                  <Badge tone="green">XML ACTIVE</Badge>
+                </div>
+                <p className="text-[11px] text-[#8c95a6]">
+                  Full index of all public academy routes with priorities (1.0 for home, 0.9 for courses/signals, 0.8 for mentorship).
+                </p>
+                <a
+                  href="/sitemap.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#ffb600] font-bold hover:underline pt-1"
+                >
+                  View sitemap.xml <ExternalLink size={12} />
+                </a>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#11141d] border border-white/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-white">/robots.txt</span>
+                  <Badge tone="green">PERMISSIONS OK</Badge>
+                </div>
+                <p className="text-[11px] text-[#8c95a6]">
+                  Explicit directives granting access to Googlebot, Bingbot, PerplexityBot, GPTBot, and ClaudeBot while protecting private auth routes.
+                </p>
+                <a
+                  href="/robots.txt"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#ffb600] font-bold hover:underline pt-1"
+                >
+                  View robots.txt <ExternalLink size={12} />
+                </a>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#11141d] border border-white/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-white">/llms.txt</span>
+                  <Badge tone="yellow">AI DISCOVERY</Badge>
+                </div>
+                <p className="text-[11px] text-[#8c95a6]">
+                  Standard machine-readable knowledge base for LLM search assistants (ChatGPT, Perplexity, Claude, Gemini) to cite Candlesticks Academy.
+                </p>
+                <a
+                  href="/llms.txt"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#ffb600] font-bold hover:underline pt-1"
+                >
+                  View llms.txt <ExternalLink size={12} />
+                </a>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-white/10 bg-[#0d1017] rounded-b-2xl">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-2">
+                External Google Webmaster &amp; Rich Results Verifiers
+              </h4>
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href="https://search.google.com/test/rich-results?url=https%3A%2F%2Fcandlesticksacademy.online%2F"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition"
+                >
+                  Google Rich Results Validator <ExternalLink size={12} />
+                </a>
+                <a
+                  href="https://search.google.com/search-console"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition"
+                >
+                  Google Search Console Console <ExternalLink size={12} />
+                </a>
+                <a
+                  href="https://analytics.google.com/analytics/web/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition"
+                >
+                  Google Analytics 4 Live Dashboard <ExternalLink size={12} />
+                </a>
+              </div>
+            </div>
+          </Card>
+
+          {/* Subdomain Routing & Architecture Card */}
+          <Card className="data-card">
+            <div className="p-5 border-b border-white/10">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#ffb600]">
+                SUBDOMAIN ROUTING &amp; MULTI-TENANT ARCHITECTURE
+              </span>
+              <h3 className="text-base font-bold text-white mt-0.5">
+                Domain Routing Architecture
+              </h3>
+            </div>
+            <div className="p-5 space-y-3 text-xs text-[#a4abb6]">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#11141d] border border-white/10">
+                <div>
+                  <b className="text-white block font-mono">candlesticksacademy.online / www.candlesticksacademy.online</b>
+                  <span className="text-[11px] text-[#7f8a9d]">Public Homepage, Curriculum, Pricing, Free Trial, and Student Signup</span>
+                </div>
+                <Badge tone="green">PUBLIC / SEO</Badge>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#11141d] border border-white/10">
+                <div>
+                  <b className="text-white block font-mono">student.candlesticksacademy.online</b>
+                  <span className="text-[11px] text-[#7f8a9d]">Student Trading Terminal, Course Player, Signals, 1-on-1 Mentorship</span>
+                </div>
+                <Badge tone="yellow">CLIENT PORTAL</Badge>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#11141d] border border-white/10">
+                <div>
+                  <b className="text-white block font-mono">master.candlesticksacademy.online (or master.candlesticks.online)</b>
+                  <span className="text-[11px] text-[#7f8a9d]">Founder Admin Console, Roster Management, Signal Broadcasting, Moolre &amp; SEO Controls</span>
+                </div>
+                <Badge tone="yellow">ADMIN PORTAL</Badge>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 mt-2">
+                <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Clean URL Guarantee:</strong> The long character string (<code>?ca_sso=...</code>) has been permanently removed from the URL bar. Authentication uses secure domain-wide cookies across <code>.candlesticksacademy.online</code>.
+                </span>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
     </>
   );

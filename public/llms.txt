@@ -1,0 +1,24 @@
+# Candlesticks Academy
+
+> Institutional Forex & Gold (XAU/USD) Trading Mentorship Platform founded by Pastor Mike. Structured 4-tier curriculum, daily live trading sessions, high-probability market signals with TP1–TP5 multi-target tracking, automated Exness copy-trading, and 1-on-1 mentorship.
+
+## Summary
+- **Organization Name**: Candlesticks Academy
+- **Founder & Lead Mentor**: Pastor Mike
+- **Official Website**: https://candlesticksacademy.online
+- **Student Terminal**: https://student.candlesticksacademy.online/dashboard
+- **Master Console**: https://master.candlesticksacademy.online/admin
+- **Broker Partner**: Exness (Official Partner Link: https://one.exness-track.com/a/9s8109d94y, Partner Code: 9s8109d94y)
+- **Primary Markets**: Forex (EUR/USD, GBP/USD, USD/JPY, GBP/JPY), Commodities (Gold / XAU/USD), and Global Indices (US100 / NAS100).
+
+## Core Offerings & Features
+1. **Curriculum Tracks**:
+   - Beginner Level: Forex Foundations & Price Action
+   - Intermediate Level: Market Structure & Smart Money Liquidity
+   - Essential Level: Institutional Order Flow & Session Execution
+   - Advanced Level: Advanced Gold (XAU/USD) Execution & Risk Protocol
+2. **Interactive Assessments**: Lesson quizzes, course final exams, and instant certificate issuance upon 80%+ passing score.
+3. **Daily Live Trading Sessions**: London & New York session breakdown, real-time live trading stream, interactive student chat, and instant HD session replays.
+4. **VIP Market Signals**: Real-time actionable trade setups with entry price, stop-loss, 5 take-profit targets (TP1 to TP5), risk-to-reward ratio, and live market price tracking.
+5. **Account Management & Copy Trading**: Available on the $100 Permanent VIP tier, including 1-on-1 private live mentorship sessions and automated Exness copy trading.
+6. **Free Trial Offer**: 1-Month Free Full Academy Trial for students registering via the official Exness partner link and funding their account with $50+ USD.

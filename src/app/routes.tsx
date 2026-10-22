@@ -51,10 +51,13 @@ if (typeof window !== "undefined") {
   const currentFull =
     window.location.pathname + window.location.search + window.location.hash;
 
-  if (host === ADMIN_PORTAL_DOMAIN && window.location.pathname === "/") {
+  if ((host === ADMIN_PORTAL_DOMAIN || host.startsWith("master.")) && window.location.pathname === "/") {
     const dest = isMasterAdminAuthenticated() ? "/admin" : "/login";
     window.history.replaceState(null, "", dest);
-  } else if (host === STUDENT_PORTAL_DOMAIN && window.location.pathname === "/") {
+  } else if (
+    (host === STUDENT_PORTAL_DOMAIN || host.startsWith("student.") || host.startsWith("stu.")) &&
+    window.location.pathname === "/"
+  ) {
     const hasStudent = Boolean(localStorage.getItem("candlesticks_current_student"));
     const dest = hasStudent ? "/dashboard" : "/login";
     window.history.replaceState(null, "", dest);
